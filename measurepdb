@@ -1,0 +1,34 @@
+#!/bin/bash
+#$1 is the pdb file to check
+#$2 is the sub of interest
+#$3 is the threshold
+
+SUB=$2
+THRESHOLD=$3
+awk '
+    ($1== "ATOM" ) || \
+    ($1== "HETATM" ) {
+        atom[$2] = 1
+        x[$2] = $(NF-5)
+        y[$2] = $(NF-4)
+        z[$2] = $(NF-3)
+	name[$2] = $NF
+	pdbatom[$2] = $3
+	pdbgroup[$2] = $4
+	resnum[$2] = $(NF-6)
+	res[$2] = $(NF-8)
+	atomname[$2] = $NF
+	atomorhet[$2] = $1
+    }
+    END {
+        for (a in atom) {
+            for (b in atom) {
+                if (atomorhet[b]=="HETATM" && atomorhet[a]=="ATOM" ) {
+                    dist = sqrt((x[a]-x[b])^2 + (y[a]-y[b])^2 + (z[a]-z[b])^2)
+                    if (dist < '$THRESHOLD' && ( pdbgroup[a]=="'$SUB'" || pdbgroup[b]=="'$SUB'") && ( pdbgroup[a]!=pdbgroup[b] ) )
+                        printf "%s%s %s %s %s %s '$SUB' %s %s %s %s %.5s %s %s\n", pdbgroup[a], resnum[a], atomname[a], x[a], y[a], z[a], atomname[b], x[b], y[b], z[b], dist, pdbatom[a], pdbatom[b]
+                }
+            }
+        }
+    }
+' $1

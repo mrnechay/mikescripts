@@ -1,0 +1,351 @@
+#!/bin/bash
+
+
+#########################
+#			#
+#      Q M / D M D      #
+#     setup by mike	#
+#			#
+#########################
+
+if [ -z "$1" ]
+then
+echo '
+# This script aims to take a pdb file and set up everything one would need for a QM/DMD run
+# First, call the script and the qmdmd folder containing the pdb file of the same name,
+# Or just call the script and any pdb file:
+# setupqmdmd.mike runthis.pdb
+# The script will clean up and format it the way the QM/DMD process likes. it will also convert the file to a DMD-compatible format
+
+# If the above was successful, the script will also state the nearby residues to the active site.
+# setupqmdmd.mike foldername HIS422,glu471,HIS426 -1 1 <-- substrate charge
+# $1 is qmdmd folder. $2 should be residue list for qm region. HIS271,glu586,TYR464 #3 metal/substrate charge $4 is the metal/substrate multiplicity.
+# Example call: setupqmdmd.mike Ir_protein_folder HIS271,glu586,TYR464, -1, 1
+# two log files are created: qmdmdsetup.log and qmdmdsetup.err within the directory
+
+# Other scripts required: 
+# pdbPOLARHs
+# genQMparameters
+'
+exit 0
+fi
+
+qmdmdfolder=`echo $1 | awk -F"." '{print $1}'`
+filetype=`echo $1 | awk -F"." '{print $NF}'`
+
+if [[ "$filetype" == pdb ]]
+then
+
+if [ -d "$qmdmdfolder" ]
+then
+echo "qmdmd folder $qmdmdfolder already exists. please change pdb filename or delete/rename existing folder"
+exit 0
+fi
+
+mkdir $qmdmdfolder
+cp $qmdmdfolder.pdb $qmdmdfolder/
+echo "new qmdmd folder, $qmdmdfolder, created"
+
+elif [ -n "$filetype" ]
+then
+
+if [[ "$filetype" != "$qmdmdfolder" ]]
+then
+
+echo "please specify either a pdb file or a valid qmdmd folder"
+exit 0
+
+fi
+fi
+
+reslist=$2
+subcharge=$3
+multiplicity=$4
+
+if [ -z "$2" ]
+then
+
+#cleanup, even if we shouldn't need it:
+if [ -a $qmdmdfolder/topparam.list ]; then rm $qmdmdfolder/topparam.list; fi
+if [ -a $qmdmdfolder/yay2.pdb ]; then rm $qmdmdfolder/yay2.pdb; fi
+if [ -a $qmdmdfolder/metals.pdb ]; then rm $qmdmdfolder/metals.pdb; fi
+if [ -a $qmdmdfolder/sub.pdb ]; then rm $qmdmdfolder/sub.pdb; fi
+
+# v do we need this config file???
+if [ -a $qmdmdfolder/config ]; then rm $qmdmdfolder/config; fi
+echo "fullpathname=`pwd`/$qmdmdfolder/" >> $qmdmdfolder/config
+echo "dmd_path=/u/home/ana/snedd/bin/DMD" >> $qmdmdfolder/config
+if [ -a $qmdmdfolder/config1 ]; then rm $qmdmdfolder/config1; fi
+echo "yourfilename=yay2.pdb" > $qmdmdfolder/config1
+echo "dmd_path=/u/home/ana/snedd/bin/DMD" >> $qmdmdfolder/config1
+# ^ do we need this config file?
+
+###### F O R M A T T I N G   S E C T I O N ######
+
+dos2unix $qmdmdfolder/$qmdmdfolder.pdb >> $qmdmdfolder/qmdmdsetupoutput 2>/dev/null
+
+# All protein atoms should be simply labelled as "ATOM" in the first column
+# I've had pdb files include a "B" version of the protein amino acids, this gets rid of that as well
+# "yay2.pdb" is a temporary file I use to layer all lines into as they are processed into a pdb file DMD can read properly
+grep -e "^ATOM" $qmdmdfolder/$qmdmdfolder.pdb | egrep -v "BALA|BCYS|BASP|BGLU|BPHE|BGLY|BHIS|BILE|BLYS|BLEU|BMET|BASN|BPRO|BGLN|BARG|BSER|BTHR|BVAL|BTRP|BTYR" >> $qmdmdfolder/yay2.pdb
+# At this point, only the protein is present in the formatted file.
+
+# TER separates the three different groups: protein, metal(s), and substrate. Let's create the metal section next!
+echo "TER" >> $qmdmdfolder/yay2.pdb
+egrep -i "HETATM .... IR|HETATM .... ZN|HETATM .... FE|HETATM .... CU|HETATM .... AG|HETATM .... PT|HETATM .... PD|HETATM .... NI" $qmdmdfolder/$qmdmdfolder.pdb > $qmdmdfolder/metals.pdb #there must be an easier way to extract the metals. otherwise, just add to the list if yours isn't here
+# Throughout setup, metals such as IR are referenced as IR (PDB code), "Ir" (as in at the end of the line), and "ir" (TURBOMOLE takes atom input in this way)
+readarray -t METALS < <(cat $qmdmdfolder/metals.pdb | awk -F" " '{print $3}' | tr [a-z] [A-Z])
+readarray -t metals < <(cat $qmdmdfolder/metals.pdb | awk -F" " '{print $3}' | tr [A-Z] [a-z])
+Metals=(${metals[@]^})
+# Now we should be able to just reference the metal number to be displayed in whatever capitalization we want
+
+# Start counter for while loop through all metals
+COUNTER=1
+metalcount=`wc -l $qmdmdfolder/metals.pdb | awk -F" " '{print $1}'`
+# This while loop will extract and format each metal line for inclusion in the protein pdb file
+while [[ "$COUNTER" -le "$metalcount" ]]
+do
+# this is confusing but should format the pdb line how we want
+cat $qmdmdfolder/metals.pdb | head -n +$COUNTER | tail -1 | awk 'length(FNR)==1{print substr($0,1,7), "  "FNR, substr($0,13,length($0))} length(FNR)==2{print substr($0,1,6), "  "FNR, substr($0,13,length($0))}' | head -n +1 | awk 'length($0)>70{$0=substr($0,1,17)"'${METALS[$(($COUNTER-1))]}$COUNTER' B   '$COUNTER'"substr($0,27,length($0))}1' | sed 's/'${METALS[$(($COUNTER-1))]}' *$/Zn/g' | sed 's/'${metals[$(($COUNTER-1))]}' *$/Zn/g' | sed 's/'${Metals[$(($COUNTER-1))]}' *$/Zn/g' >> $qmdmdfolder/yay2.pdb
+if [ -a $qmdmdfolder/metal$COUNTER.pdb ]; then rm $qmdmdfolder/metal$COUNTER.pdb; fi
+cat $qmdmdfolder/metals.pdb | head -n +$COUNTER | tail -1 | awk 'length(FNR)==1{print substr($0,1,7), "  "FNR, substr($0,13,length($0))} length(FNR)==2{print substr($0,1,6), "  "FNR, substr($0,13,length($0))}' | head -n +1 | awk 'length($0)>70{$0=substr($0,1,17)"'${METALS[$(($COUNTER-1))]}$COUNTER' B   '$COUNTER'"substr($0,27,length($0))}1' | sed 's/'${METALS[$(($COUNTER-1))]}' *$/Zn/g' | sed 's/'${metals[$(($COUNTER-1))]}' *$/Zn/g' | sed 's/'${Metals[$(($COUNTER-1))]}' *$/Zn/g' >> $qmdmdfolder/metal$COUNTER.pdb
+babel $qmdmdfolder/metal$COUNTER.pdb $qmdmdfolder/metal$COUNTER.mol2 2>> $qmdmdfolder/babel.err
+
+# Let's check to make sure babel worked:
+if grep -q "molecule converted" $qmdmdfolder/babel.err
+then
+cat $qmdmdfolder/babel.err >> qmdmdsetup.err
+rm $qmdmdfolder/babel.err
+echo "Successful inclusion of metal, ${metals[$(($COUNTER-1))]}"
+else
+echo "something seems to have gone wrong with babel in metal conversion. Investigate babel.err"
+exit 0
+fi
+# finish babel check
+
+echo 'MOL     '${METALS[$(($COUNTER-1))]}$COUNTER'     ./metal'$COUNTER'.mol2' >> $qmdmdfolder/topparam.list
+echo "TER" >> $qmdmdfolder/yay2.pdb
+COUNTER=$(($COUNTER + 1))
+done
+# metal.pdb files should be setup, and we should now be ready to add our substrate, i.e., all HETATM entries that weren't metals.
+
+# greps just the substrate lines to the sub.pdb file
+egrep -v " IR | FE | CU | ZN | AG | PT | PD | NI " $qmdmdfolder/$qmdmdfolder.pdb | egrep "^HETATM" | awk 'length(FNR)==1{print substr($0,1,7), "  "FNR, substr($0,13,length($0))} length(FNR)==2{print substr($0,1,6), "  "FNR, substr($0,13,length($0))}' | awk 'length($0)>70{$0=substr($0,1,17)"SUB B   '$COUNTER'"substr($0,27,length($0))}1' >> $qmdmdfolder/sub.pdb
+# if there wasn't actually a substrate, then the next part can be skipped
+if [ -s $qmdmdfolder/sub.pdb ]; then
+cd $qmdmdfolder
+# the following aims to number all atoms in the substrate. this is necessary for proper labelling later on where every atom needs to be unique
+# numbers are added simply by appending a line number. first we shift all to start at atom #10 to preserve spacing. for this reason, only 90 atoms can be part of the substrate for it goes to 3 digits and screws up the formatting. this can be expanded if needed by changing the numbering code below
+( tac sub.pdb ; printf " \n \n \n \n \n \n \n \n \n" ) | tac | nl | awk 'length($0)>20{$0=substr($0,1,21)""substr($1,1,3)""substr($0,24,length($0))}1' | cut -f 2- | grep "HETATM" > _sub.pdb
+mv _sub.pdb sub.pdb
+cd ..
+cat $qmdmdfolder/sub.pdb >> $qmdmdfolder/yay2.pdb
+# substrate section should be g2g
+
+# The following takes some necessary steps to prepare the substrate section for the DMD run
+babel -i pdb $qmdmdfolder/sub.pdb -o mol2 $qmdmdfolder/sub.mol2 2>> $qmdmdfolder/babel.err
+
+# Let's check to make sure babel worked:
+if grep -q "molecule converted" $qmdmdfolder/babel.err
+then
+cat $qmdmdfolder/babel.err >> qmdmdsetup.err
+rm $qmdmdfolder/babel.err
+echo "Successful inclusion of substrate"
+else
+echo "something seems to have gone wrong with babel in substrate conversion. Investigate babel.err"
+exit 0
+fi
+# finish babel check
+
+# H atoms that are not attached to O or N need to be labelled as "Eh"
+sed -i 's/ H / Eh/g' $qmdmdfolder/sub.mol2
+cd $qmdmdfolder
+# the following is a separate script I wrote which outputs exactly the sed commands needed to turn our polar "Eh"'s back to "H"
+pdbPOLARHs sub.pdb > IDpolarH.sh 2>>qmdmdsetup.err
+chmod +x IDpolarH.sh
+./IDpolarH.sh
+cd ..
+# I guess I could have just done that all in here, but I worked on it and like it as a separate package
+
+echo "TER" >> $qmdmdfolder/yay2.pdb
+echo "MOL     SUB     ./sub.mol2" >> $qmdmdfolder/topparam.list
+else
+if [ -a $qmdmdfolder/sub.pdb ]; then rm $qmdmdfolder/sub.pdb; fi
+fi
+echo "ENDMDL" >> $qmdmdfolder/yay2.pdb
+# At this point, formatting of the pdb should be complete and almost ready for DMD! sweet!
+# maybe something to check the above worked well, and a notice or error message at this point?
+
+cp $qmdmdfolder/yay2.pdb $qmdmdfolder/initial.pdb
+cp $qmdmdfolder/initial.pdb $qmdmdfolder/initial.orig.pdb
+cd $qmdmdfolder
+
+# the following script converts the protein pdb file to be DMD compatible
+pdb_to_pdbDMD.sh initial.pdb new.pdb >> qmdmdsetup.log
+# A non-success means some input screwed up the script
+success=`grep "GOOD TO GO" qmdmdsetup.log`
+if grep -q "GOOD" qmdmdsetup.log
+then
+echo $success
+echo " "
+###### D E T E C T I N G   Q M   R E G I O N   C A N D I D A T E S ######
+# The following detects nearby residues and alerts the user of their presence.
+# the criteria is currently very simple: anything that has any atoms within a certain distance will be listed
+# there is distinction between what is near the metal and near the substrate atoms
+# it could be improved by being more selective - obviously close distances hydrogen bond donors/acceptors should be highlighted
+# but hydrophic groups should be scrutinized a bit more.
+
+# cleanup!
+if [ -a metalreslist ]; then rm metalreslist; fi
+if [ -a subreslist ]; then rm subreslist; fi
+
+readarray -t subs < <(cat topparam.list | awk -F" " '{print $2}')
+
+# following loops through each entry in the topparam.list
+for ii in "${subs[@]}"
+do
+if [[ "$ii" != "SUB" ]]
+then
+# metals get a shorter cutoff than the whole substrate, this can be changed however I just figure this section is just here to detect bonded residues
+measurepdb to_next_iteration.pdb $ii 3 | awk -F" " '{print $1}' | sort -u > metalreslist
+echo "The following residues were found within 3 Angstroms of metal $ii"
+cat metalreslist
+echo " "
+metalreslist=`cat metalreslist | tr '\n' '|' | sed -e s/\|$//g`
+else
+# I figure 4 Angstroms is a good cutoff, only the weakest hydrogen bonds are this far away. however van der waals forces extend longer, so this could be expanded
+measurepdb to_next_iteration.pdb $ii 4 | sort -n -k11 | awk '!_[$1]++' | egrep -v "$metalreslist" | awk -F" " '{print $1,$11,$12}' > subreslist
+if [ -s subreslist ]
+then
+echo "The following residues were found within 4 Angstroms of your substrate atoms; you may want to consider including the following in the QM region:"
+cat subreslist
+echo " "
+fi
+fi
+done
+# At this point, the user has a good idea of the possible residues to include in the qm region. However, the user should check visually for themselves
+echo "See new.pdb"
+echo "run command again with the QM residues and substrate/metal charge labelled"
+echo "chimera $qmdmdfolder/new.pdb"
+pwd > pwd
+echo "scp mnechay@hoffman2.idre.ucla.edu:`cat pwd`/new.pdb ./"
+rm pwd
+cd ..
+else
+echo "NOT good to go... check the qmdmdsetup.log and .err along with your input to find out what's wrong"
+fi
+
+else
+
+echo "1 should be your qmdmd folder"
+
+fi
+
+###### D E F I N I N G   Q M   R E G I O N ######
+# After formatting is complete, the residues
+# should be input into the script along with
+# charge and multiplicity of the substrate
+# (The script already accounts for charge
+# additions by the  residues separately)
+# Also, the script can accept .mtm as $5
+
+if [ $2 ]
+then
+cd $qmdmdfolder
+# cleanup!
+if [ -a inConstr ]; then rm inConstr; fi
+if [ -a genESC.output ]; then rm genESC.output; fi
+if [ -a $qmdmdfolder/Spec1.sh ]; then rm $qmdmdfolder/Spec1.sh; fi
+if [ -a $qmdmdfolder/Spec2.sh ]; then rm $qmdmdfolder/Spec2.sh; fi
+
+# let's do this! First, the infamous "inC" file
+genESC.linux  ~snedd/bin/DMD/parameter/ new.pdb topparam.list >> inConstr 2>genESC.output
+if [ -a $qmdmdfolder/input ]; then rm $qmdmdfolder/input; fi
+# the following is a (pretty lengthy) script which sets up all the the DMD and QM information which links the QM and DMD regions together
+# A lot of assumptions are made here, including no protonation or deprotonation of residues, certain pre-determined chain lengths for res
+# (which still offers some flexibility to the user - calling "GLU64" gives the entire GLU residue up to right before the alpha carbon
+# wheras calling "glu64" gives only the functional group and single carbon/hydrogen cap. I hope this can be expanded to allow other 
+# situations that may come up with systems I have not dealt with, but if anything this gives a good "starting point" where
+# saavy users can add and modify terms further to their liking.
+genQMDMDparameters $2
+# Also output from above is a "changecharge" files which kept track of the changes in overall charge that came with each new residue
+extract_qm.sh new.pdb x.pdb >> qmdmdsetup.log
+chimera_addh.sh x.pdb h.pdb >> qmdmdsetup.log
+cd ..
+
+# we need to create two scripts which will correctly pass the metals back and forth from DMD to QM
+readarray -t METALS < <(cat $qmdmdfolder/metals.pdb | awk -F" " '{print $3}' | tr [a-z] [A-Z])
+readarray -t metals < <(cat $qmdmdfolder/metals.pdb | awk -F" " '{print $3}' | tr [A-Z] [a-z])
+Metals=(${metals[@]^})
+echo "sed s/Zn/${Metals[0]}/ < \$qmdmdfolder > _tmp" > $qmdmdfolder/Spec1.sh
+echo "mv _tmp \$qmdmdfolder" >> $qmdmdfolder/Spec1.sh
+echo "sed s/${Metals[0]}/Zn/ < \$qmdmdfolder > _tmp" > $qmdmdfolder/Spec2.sh
+echo "mv _tmp \$qmdmdfolder" >> $qmdmdfolder/Spec2.sh
+chmod +x $qmdmdfolder/Spec1.sh
+chmod +x $qmdmdfolder/Spec2.sh
+# unfortunately, at this point the script only handles a single type of metal. two Cu ions is fine, but if one were to have
+# a Cu and a Ni, the scripts currently cannot distinuish between them because DMD only wants to see "Zn"
+# since these metals are frozen during DMD, it should be possible to substitute based on position rather than element name going from DMD to QM
+# Conversely, in QM the metals don't necessarily stay still. however, all metals are becoming Zn so that part isn't the issue
+# TL;DR for Spec1, substitute based on position rather than name, Spec2: sed ALL metals to Zn
+
+# Alright, ready for the real QM site making?
+cd $qmdmdfolder
+create_coord.sh h.pdb >> qmdmdsetup.log
+cd ..
+mkdir $qmdmdfolder/Template_EO
+cp $qmdmdfolder/coord $qmdmdfolder/Template_EO/
+if [[ $3 == *-* ]]; then
+echo "charge is negative"
+elif [[ $3 == *+* ]]; then
+echo "charge is positive"
+else
+subcharge=`echo +$3`
+fi
+# below we add to the "changecharge" file our substrate charge. the following bc command gives us the final charge of the system
+echo $subcharge >> $qmdmdfolder/changecharge
+forbc=`cat $qmdmdfolder/changecharge | tr -d '\n'`
+charge=`echo $forbc | bc`
+echo "charge is $charge" >> $qmdmdfolder/charge
+cd $qmdmdfolder/Template_EO
+if [ -a defineoutput ]; then rm defineoutput; fi
+
+# Ok this is where a newer script of mine, performturbomole, can come in to help set up the QM calculations
+# however, if no mtm file was specified in the beginning, we can go with the bare defaults defined
+# in my earlier "quickdefine" script which gives a pretty standard configuration
+if [ -n "$5" ]
+then
+echo "oh, you have an mtm file, for me!!?? thank you!"
+else
+echo "Using standard QM setup: TPSS/def2-SVP for nonmetals, TPSS/def2-TZVPP for nonmetals. Dispersion is included. No embedding."
+eval $( quickdefine $charge $4 | head -n +1 )
+scf=`grep scfiterlimit control | awk -F" " '{print $NF}'`
+if [ $scf != 500 ]
+then
+rmall coord
+eval $( quickdefine $charge $4 | tail -1 )
+scf=`grep scfiterlimit control | awk -F" " '{print $NF}'`
+if [ $scf != 500 ]
+then
+echo "the define script is not working. Sorry, please check it out."
+exit 0
+fi
+fi
+sed -i '/\$dft/i \\$disp3' control
+fi
+
+if [ -a run_calc.sh ]; then rm run_calc.sh; fi
+echo "ridft >> ridft.out" > run_calc.sh
+chmod +x run_calc.sh
+cd ..
+if [ -d Template_Opt ]; then rm -r Template_Opt/; fi
+cp -R Template_EO/ Template_Opt/
+cd ./Template_Opt
+rm run_calc.sh
+echo "jobex -c 500 -ri -energy 5 -gcart 2 -gexp 2" > run_calc.sh
+chmod +x run_calc.sh
+cd ..
+
+# It all comes down to this, if the following script can successfully convert our new.pdb back then we know QM and DMD steps should be able to talk to each other just fine
+pdb_to_pdbDMD.sh new.pdb test.pdb
+fi

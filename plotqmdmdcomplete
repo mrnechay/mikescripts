@@ -1,0 +1,71 @@
+#!/bin/bash
+
+# this script will generate plots for all qmdmd folders in the current directory
+
+# Cleans out pdb directories and run `dodirs.sh 1 domakepdb.sh` before running plot commands
+
+for jj in `echo */ | sed 's:/::g'`
+do
+if [ -a $jj/qm_opt_energies.dat ]; then
+if [ -d $jj/pdb ]; then rm -r $jj/pdb; fi
+if [ -d $jj/active_pdb ]; then rm -r $jj/active_pdb; fi
+fi
+done
+
+dodirs.sh 1 domakepdb.sh
+
+#the below just plots everything. is my own code.
+
+dateforfolder=`date | awk -F" " '{print $2,$3}' | sed 's/ //g'`
+if [ -d qmdmdplots$dateforfolder ]; then rm -r qmdmdplots$dateforfolder; fi
+mkdir qmdmdplots$dateforfolder
+
+for ii in `echo */ | sed 's:/::g'`
+do
+if [ -a $ii/qm_opt_energies.dat ]
+then
+numiterations=`cat $i/qm_opt_energies.dat | wc -l`
+if [[ "$numiterations" -gt 10 ]]; then numiterations=10; fi
+#whenever I plan to create a specific file I like to check for it and delete it (hoping it was just I who made it earlier and the new one is needed
+if [ -a $ii.png ]; then rm $ii.png; fi
+cd $ii
+if [ -a plotscript ]; then rm plotscript; fi
+if [ -a recompenergies ]; then rm recompenergies; fi
+if [ -a recompenergies2 ]; then rm recompenergies2; fi
+paste -d" " <(cat qm_opt_energies.dat | awk -F" " '{print $1,$2,$3}') <(paste -d- <(cat qm_opt_energies.dat | awk -F" " '{print "(",$2}') <(yes `cat qm_opt_energies.dat | awk -F" " 'BEGIN {OFS=""} {print "_",$2,")*627.509"}' | head -n +1` | head -$(wc -l < qm_opt_energies.dat) | awk '{print substr($1,2); }') | sed s/--/+/g | bc) > recompenergies
+paste -d" " <(cat recompenergies | awk -F" " '{print $1,$2,$3,$4}') <(paste -d- <(cat qm_opt_energies.dat | awk -F" " '{print $3}') <(yes `cat qm_opt_energies.dat | awk -F" " 'BEGIN {OFS=""} {print "_",$3}' | head -n +2 | tail -1` | head -$(wc -l < qm_opt_energies.dat) | awk '{print substr($1,2); }') | sed s/--/+/g | bc) > recompenergies2
+if [ -a pure_guide_rmsd.dat ]; then rm pure_guide_rmsd.dat; fi
+if [ -a pure_bb_rmsd.dat ]; then rm pure_bb_rmsd.dat; fi
+cat pdb/guide_rmsd.dat | head -n -3 > pure_guide_rmsd.dat
+cat pdb/bb_rmsd.dat | head -n -3 > pure_bb_rmsd.dat
+echo "
+set xlabel \"Iteration\"
+set ylabel \"Energy (kcal/mol)\"
+set grid
+set term png size 1152,768
+set output \"egraph.png\"
+
+set multiplot layout 2,2 title \"\`pwd | awk -F\"/\" '{print \$NF}'\`\"
+set key ins vert
+set key left top
+set title \"QM Region Energy vs Iteration\"
+plot \"recompenergies2\" using 1:4 with linespoints notitle
+set key center top
+set title \"DMD Energy vs Iteration\"
+plot \"recompenergies2\" using 1:5 every ::2 with linespoints notitle
+set title \"Backbone RMSD vs Iteration\"
+set ylabel \"RMSD\"
+plot \"pure_bb_rmsd.dat\" using 1:2 with linespoints notitle
+set title \"QM Region RMSD vs Iteration\"
+plot \"pure_guide_rmsd.dat\" using 1:2 with linespoints notitle
+
+unset multiplot
+
+set term x11
+" > plotscript
+#
+gnuplot -e "filename='recompenergies2'" plotscript
+mv egraph.png ../qmdmdplots$dateforfolder/$ii.png
+cd ..
+fi
+done

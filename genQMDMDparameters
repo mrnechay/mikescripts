@@ -1,0 +1,1114 @@
+#!/bin/bash
+
+# This script takes in a single argument of all qm residues separated by commas such as HIS422,HIS426,tyr490
+# $1 should be the list of residues. It is assumed new.pdb will be the pdb file used.
+
+# Residues in CAPS will get chopped all the way at the alpha (first carbon of chain being beta) carbon. common letter amino acids
+# get chopped closer to the amino acid "head". This will speed up calculations but give less flexibility
+
+# E.g.: scriptname HIS422,HIS426,glu471
+
+considerallfree="no"
+
+# Read the qm residues in as an array, qmresidues
+
+IFS=',' read -a qmresidues <<< "$1"
+
+if [ -a metalsaminodist ]; then rm metalsaminodist; fi
+if [ -a tempatompairrel ]; then rm tempatompairrel; fi
+if [ -a tempchop ]; then rm tempchop; fi
+if [ -a tempstatic ]; then rm tempstatic; fi
+if [ -a templist ]; then rm templist; fi
+if [ -a tempfrozen ]; then rm tempfrozen; fi
+
+if [ -a metals.temp ]; then rm metals.temp; fi
+egrep -i "HETATM .+ IR|HETATM .+ ZN|HETATM .+ FE|HETATM .+ CU|HETATM .+ AG|HETATM .+ PD|HETATM .+ MN|HETATM .+ RU|HETATM .+ CO" new.pdb > metals.temp
+readarray -t METALS < <(cat metals.temp | awk -F" " '{print $3}' | tr [a-z] [A-Z])
+readarray -t metals < <(cat metals.temp | awk -F" " '{print $3}' | tr [A-Z] [a-z])
+Metals=(${metals[@]^})
+
+# We need to know which atoms are in proximity with each of the metals. The script that is referenced will spit out those atoms closest. These will later be tagged as
+# part of the "qm only" region, i.e. DMD is not allowed to move them (only QM)
+for ii in "${METALS[@]}"
+do
+atomstometal new.pdb $ii >> metalsaminodist
+metal1=`atomstometal new.pdb $ii | awk -F" " '{print $1}' | head -n +1`
+bound1=${metal1:0:2}
+numm1=$((${metal1:2:3}+1))
+echo "Static $numm1.1.$bound1" > tempstatic
+
+echo "#list $metal1 B   $(($numm1-1)) $bound1" >> templist1 #OK I'm putting this in a separate file for now because metal has to be added LAST to the reslist/list
+printf "\"$metal1 B%4s\" "  $(($numm1-1)) > reslistresidues1 # ^^
+done
+paste <(cat metalsaminodist | awk -F" " '{print $1,$2}') <(cat metalsaminodist | awk -F" " '{print $3}' | tr [A-Z] [a-z]) >> metalsaminodist #gotta be able to search for lower case too
+
+# The output of a single run of that loop could look like:
+# ZN1 OE1 GLU471
+# ZN1 NE2 HIS422
+# ZN1 NE2 HIS426
+# ZN1 OE1 glu471
+# ZN1 NE2 his422
+# ZN1 NE2 his426
+# So, we see ZN1 is in close proximity to one of the oxygens on GLU471 and those atoms need to be held as Static to DMD
+
+for jj in "${qmresidues[@]}"
+do
+aminoname=${jj:0:3}
+aminonum=${jj:3:6}
+
+unset status
+unset atombound
+unset metalbound
+unset specificmetal
+unset metalnumber
+
+mm=`echo $aminoname | tr [a-z] [A-Z]`
+
+if grep -q "$mm$aminonum" metalsaminodist #This grep command aims to simply give a true statement if the qmresidue appears in the above list
+then
+status=attached
+
+if [ "$considerallfree" == "yes" ]; then status=free; fi
+
+#If we get here, we have an amino acid residue in close proximity to a metal, the following is the actual line that will keep the right atom static:
+atombound=`grep "$mm$aminonum" metalsaminodist | awk -F" " '{print $2}' | sort -u`
+echo "Static 1.$aminonum.$atombound" >> tempstatic
+
+# Ok let's make sure HIS is protonated correctly. I'm assuming delta protonation is done by DMD
+if [ "$atombound" == "ND1" ]; then
+ echo "Deprotonate A:$aminonum:ND1" >> tempDeprot
+ echo "Protonate A:$aminonum:NE2" >> tempProt
+fi
+
+# and let's not forget to label which metal that is:
+specificmetal=`grep "$mm$aminonum" metalsaminodist | awk -F" " '{print $1}' | sort -u`
+metalbound=${specificmetal:0:2}
+metalnumber=$((${specificmetal:2:3}+1))
+# But we're not done yet! if we leave the rest of the residue free for dmd to move, we may get some rotation that would still break the bond between metal/residue
+# Down below, appropriate "AtomPairRel" lines will be added to further ensure DMD does not tamper disasterously with the qm region, but will still allow some sampling
+else
+status=free
+# If we land here, the residue is not likely bound to the metal via tight sigma overlap. The most likely cases are that it is at most providing a hydrogen bond,
+# possibly pi-stacking with something, or otherwise just hanging out waiting its turn. Because it has been considered as part of the qm region, we want the qm forces
+# to maintain being the most important. We will allow this substrate to move a little by adding the AtomPairRel depending on which amino acid it is, but later.
+specificmetal=`cat metalsaminodist | awk -F" " '{print $1}' | head -n +1`
+metalbound=${specificmetal:0:2}
+metalnumber=$((${specificmetal:2:3}+1))
+fi
+
+# Remember, if the residue is in common letters, we need to cut a smaller piece. these are all handled separately and I have done my best to choose the best 
+# chopping points
+if [[ $aminoname == asp ]]; then
+printf "#list ASP A%4s CG OD1 OD2\n" $aminonum >> templist
+printf "#chop ASP A%4s  CB CG HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen ASP A%4s  CG HBX\n" $aminonum >> tempfrozen
+# changecharge will serve as a tally of all amino acid charges in the active site. Later, these are added together to get the final charge
+echo "-1" >> changecharge
+if [[ "$status" == "attached" ]]; then
+# Landing here means the amino acid is directly attached to the metal by its electron donating atom. Let's allow DMD to move it a bit but not rotate much by putting two constraints
+echo "AtomPairRel 1.$aminonum.CG $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+if [[ $atombound==OD1 ]]
+then
+echo "AtomPairRel 1.$aminonum.OD2 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+else 
+echo "AtomPairRel 1.$aminonum.OD1 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+elif [[ "$status" == "free" ]]
+# Landing here means the amino acid may be pi-stacking, it may be contributing to london force interactions, hydrogen bonding somewhere, or just waiting its turn
+# Let's allow ALL atoms to only move by a little bit in DMD, to preserve this part of the QM region but still allow it to explore better conformations
+then
+for kk in CG OD1 OD2
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == lys ]]; then
+printf "#list LYS A%4s NZ HZ1 HZ2 HZ3\n" $aminonum >> templist
+printf "#chop LYS A%4s  CE NZ HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen LYS A%4s  NZ HBX\n" $aminonum >> tempfrozen
+echo "+1" >> changecharge
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in NZ HZ1 HZ2 HZ3
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == his ]]; then
+printf "#list HIS A%4s CG ND1 HD1 CE1 HE1 NE2 CD2 HD2 1HNE HCD2 HCE1\n" $aminonum >> templist
+printf "#chop HIS A%4s  CB CG HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen HIS A%4s  CG HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo "AtomPairRel 1.$aminonum.CE1 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+echo "AtomPairRel 1.$aminonum.CD2 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+elif [[ "$status" == "free" ]]
+then
+for kk in CG ND1 HD1 CE1 HE1 NE2 CD2 HD2
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == His ]]; then #deprotonated histidine
+printf "#list HIS A%4s CG ND1 CE1 HE1 NE2 CD2 HD2 HCD2 HCE1\n" $aminonum >> templiist
+printf "#chop HIS A%4s  CB CG HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen HIS A%4s  CG HBX\n" $aminonum >> tempfrozen
+echo "-1" >> changecharge
+if [[ "$status" == "attached" ]]; then
+echo "AtomPairRel 1.$aminonum.CE1 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+echo "AtomPairRel 1.$aminonum.CD2 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+elif [[ "$status" == "free" ]]
+then
+for kk in CG ND1 HD1 CE1 HE1 NE2 CD2 HD2
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+
+
+if [[ $aminoname == glu ]]; then
+printf "#list GLU A%4s CD OE1 OE2\n" $aminonum >> templist
+printf "#chop GLU A%4s  CG CD HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen GLU A%4s  CD HBX\n" $aminonum >> tempfrozen
+echo "-1" >> changecharge
+if [[ "$status" == "attached" ]]; then
+echo "AtomPairRel 1.$aminonum.CD $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+if [[ $atombound==OE1 ]]
+then
+echo "AtomPairRel 1.$aminonum.OE2 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+else 
+echo "AtomPairRel 1.$aminonum.OE1 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+elif [[ "$status" == "free" ]]
+then
+for kk in CD OE1 OE2
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == tyr ]]; then
+printf "#list TYR A%4s HO OH CZ CE1 HCE1 CD1 HCD1 CG CD2 HCD2 CE2 HCE2\n" $aminonum >> templist
+printf "#chop TYR A%4s  CB CG HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen TYR A%4s  CG HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo "AtomPairRel 1.$aminonum.CZ $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+echo "AtomPairRel 1.$aminonum.CD $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+echo "Static 1.$aminonum.HO" >> tempstatic
+elif [[ "$status" == "free" ]]
+then
+for kk in HO OH CZ CE1 CD1 CG CD2 CE2 CB
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == val ]]; then
+printf "#list VAL A%4s CB CG1 CG2 HB HG21 HG22 HG23 HG11 HG12 HG13\n" $aminonum >> templist
+printf "#chop VAL A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen VAL A%4s  CB HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in CB CG1 CG2 HB HG21 HG22 HG23 HG11 HG12 HG13
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == ser ]]; then
+printf "#list SER A%4s HO OG HG \n" $aminonum >> templist
+printf "#chop SER A%4s  CB OG HBX 0.6000\n" $aminonum >> tempchop
+printf "#frozen SER A%4s  OG HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo "Static 1.$aminonum.HG" >> tempstatic
+echo "Static 1.$aminonum.HO" >> tempstatic
+elif [[ "$status" == "free" ]]
+then
+for kk in HO OG HG
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+
+if [[ $aminoname == thr ]]; then
+printf "#list THR A%4s HO CB OG1 CG2 HG1 HB HG21 HG22 HG23 HCB HCG1 HCG2 HGC3\n" $aminonum >> templist
+printf "#chop THR A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen THR A%4s  CB HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo "AtomPairRel 1.$aminonum.CB $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+echo "Static 1.$aminonum.HG1" >> tempstatic
+echo "Static 1.$aminonum.HO" >> tempstatic
+elif [[ "$status" == "free" ]]
+then
+for kk in HO CB OG1 CG2
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == asn ]]; then
+printf "#list ASN A%4s CB CG OD1 ND2 HD21 HD22 HB2 HB3\n" $aminonum >> templist
+printf "#chop ASN A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen ASN A%4s  CB HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo "AtomPairRel 1.$aminonum.CG $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+if [[ $atombound==NE2 ]]
+then
+echo "AtomPairRel 1.$aminonum.OD1 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+else 
+echo "AtomPairRel 1.$aminonum.ND2 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+elif [[ "$status" == "free" ]]
+then
+for kk in CB CG OD1 ND2 HD21 HD22 HB2 HB3
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == gln ]]; then
+printf "#list GLN A%4s CD OE1 NE2 HE22 HE21\n" $aminonum >> templist
+printf "#chop GLN A%4s  CG CD HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen GLN A%4s  CD HBX\n" $aminonum >> tempfrozen
+echo "-1" >> changecharge
+if [[ "$status" == "attached" ]]; then
+echo "AtomPairRel 1.$aminonum.CD $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+if [[ $atombound==NE2 ]]
+then
+echo "AtomPairRel 1.$aminonum.OE1 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+else 
+echo "AtomPairRel 1.$aminonum.NE2 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+elif [[ "$status" == "free" ]]
+then
+for kk in CD OE1 NE2 HE22 HE21
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == cys ]]; then
+printf "#list CYS A%4s SG\n" $aminonum >> templist
+printf "#chop CYS A%4s  CB SG HBX 0.6000\n" $aminonum >> tempchop
+printf "#frozen CYS A%4s  SG HBX\n" $aminonum >> tempfrozen
+echo "-1" >> changecharge
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in SG
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+#below is hacky. this is a hidden option to distinguish between protonated and not protonated cys. most of the time, cys will be deprotonated and connected to our metal
+if [[ $aminoname == cYs ]]; then
+printf "#list CYS A%4s SG HG\n" $aminonum >> templist
+printf "#chop CYS A%4s  CB SG HBX 0.6000\n" $aminonum >> tempchop
+printf "#frozen CYS A%4s  SG HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo "Static 1.$aminonum.HG" >> tempstatic
+elif [[ "$status" == "free" ]]
+then
+for kk in SG HG
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+
+if [[ $aminoname == gly ]]; then
+printf "#list GLY A%4s CA HA2 HA3\n" $aminonum >> templist
+printf "#chop GLY A%4s  C CA HBX 0.7052\n" $aminonum >> tempchop
+printf "#chop GLY A%4s  N CA HBY 0.7000\n" $aminonum >> tempchop
+printf "#frozen GLY A%4s  CA HBX HBY\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in CA HA2 HA3
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == sec ]]; then
+printf "#list SEC A%4s SE \n" $aminonum >> templist
+printf "#chop SEC A%4s  CB SE HBX 0.6000\n" $aminonum >> tempchop
+printf "#frozen SEC A%4s  SE HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in SE
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+
+if [[ $aminoname == pro ]]; then
+printf "#list PRO A%4s N CA CB CG CD HA HB2 HB3 HG2 HG3 HD2 HD3\n" $aminonum >> templist
+printf "#chop PRO A%4s  C CA HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen PRO A%4s  CA HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in N CA CB CG CD HA HB2 HB3 HG2 HG3 HD2 HD3
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == ala ]]; then
+printf "#list ALA A%4s CB HB1 HB2 HB3\n" $aminonum >> templist
+printf "#chop ALA A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen ALA A%4s  CB HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in CB HB1 HB2 HB3
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+#I want to see literature structures of how arginine binds, before that I'm just going to show it as free
+if [[ $aminoname == arg ]]; then
+printf "#list ARG A%4s NE CZ NH2 NH1 HE HH21 HH22 HH11 HH12\n" $aminonum >> templist
+printf "#chop ARG A%4s  CD NE HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen ARG A%4s  NE HBX\n" $aminonum >> tempfrozen
+echo "+1" >> changecharge
+for kk in NE CZ NH2 NH1 HE HH21 HH22 HH11 HH12
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+
+if [[ $aminoname == ile ]]; then
+printf "#list ILE A%4s CB CG1 CG2 CD1 HB HG21 HG23 HG22 HG13 HG12 HD11 HD12 HD13\n" $aminonum >> templist
+printf "#chop ILE A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen ILE A%4s  CB HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in CB CG1 CG2 CD1 HB HG21 HG23 HG22 HG13 HG12 HD11 HD12 HD13
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == leu ]]; then
+printf "#list LEU A%4s CG CD1 CD2 HG HD11 HD12 HD13 HD21 HD22 HD23\n" $aminonum >> templist
+printf "#chop LEU A%4s  CB CG HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen LEU A%4s  CG HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in CG CD1 CD2 HG HD11 HD12 HD13 HD21 HD22 HD23
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == met ]]; then
+printf "#list MET A%4s SD CE HE1 HE2 HE3 1HE 2HE 3HE\n" $aminonum >> templist
+printf "#chop MET A%4s  CG SD HBX 0.6000\n" $aminonum >> tempchop
+printf "#frozen MET A%4s  CB HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo "AtomPairRel 1.$aminonum.CE $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+echo "AtomPairRel 1.$aminonum.HE1 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+elif [[ "$status" == "free" ]]
+then
+for kk in SD CE HE1 HE2 HE3
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+
+if [[ $aminoname == phe ]]; then
+printf "#list PHE A%4s CG CD1 CD2 CE1 CE2 CZ HD1 HD2 HE1 HE2 HZ\n" $aminonum >> templist
+printf "#chop PHE A%4s  CB CG HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen PHE A%4s  CG HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in CG CD1 CD2 CE1 CE2 CZ HD1 HD2 HE1 HE2 HZ
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == trp ]]; then
+printf "#list TRP A%4s CG CD1 NE1 CE2 CD2 CE3 CZ3 CH2 CZ2 HD1 HE1 HZ2 HH2 HZ3 HE3 \n" $aminonum >> templist
+printf "#chop TRP A%4s  CB CG HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen TRP A%4s  CG HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in CG CD1 NE1 CE2 CD2 CE3 CZ3 CH2 CZ2 HD1 HE1 HZ2 HH2 HZ3 HE3
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == ASP ]]; then
+printf "#list ASP A%4s CB HB2 HB3 CG OD1 OD2 1HB 2HB\n" $aminonum >> templist
+printf "#chop ASP A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen ASP A%4s  CB HBX\n" $aminonum >> tempfrozen
+echo "-1" >> changecharge
+if [[ "$status" == "attached" ]]; then
+echo "AtomPairRel 1.$aminonum.CG $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+if [[ $atombound==OD1 ]]
+then
+echo "AtomPairRel 1.$aminonum.OD2 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+else 
+echo "AtomPairRel 1.$aminonum.OD1 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+elif [[ "$status" == "free" ]]
+then
+for kk in CB CG OD1 OD2
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+
+
+
+
+if [[ $aminoname == LYS ]]; then
+printf "#list LYS A%4s CB CG CD CE NZ HB2 HB3 HG2 HG3 HD2 HD3 HE2 HE3HZ1 HZ2 HZ3\n" $aminonum >> templist
+printf "#chop LYS A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen LYS A%4s  CB HBX\n" $aminonum >> tempfrozen
+echo "+1" >> changecharge
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in CB CG CD CE NZ HB2 HB3 HG2 HG3 HD2 HD3 HE2 HE3HZ1 HZ2 HZ3
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == HIS ]]; then
+printf "#list HIS A%4s CB CG ND1 HD1 CE1 HE1 NE2 CD2 HD2 HB2 HB3 1HNE 1HCB 2HCB HCD2 HCE1 1HB 2HB\n" $aminonum >> templist
+printf "#chop HIS A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen HIS A%4s  CB HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo "AtomPairRel 1.$aminonum.CE1 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+echo "AtomPairRel 1.$aminonum.CD2 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+elif [[ "$status" == "free" ]]
+then
+for kk in CB CG ND1 HD1 CE1 HE1 NE2 CD2 HD2 HB2 HB3
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == hIS ]]; then #deprotonated histidine
+printf "#list HIS A%4s CB CG ND1 CE1 HE1 NE2 CD2 HD2 HB2 HB3 1HCB 2HCB HCD2 HCE1\n" $aminonum >> templist
+printf "#chop HIS A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen HIS A%4s  CB HBX\n" $aminonum >> tempfrozen
+echo "-1" >> changecharge
+if [[ "$status" == "attached" ]]; then
+echo "AtomPairRel 1.$aminonum.CE1 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+echo "AtomPairRel 1.$aminonum.CD2 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+elif [[ "$status" == "free" ]]
+then
+for kk in CB CG ND1 HD1 CE1 HE1 NE2 CD2 HD2 HB2 HB3
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == GLU ]]; then
+printf "#list GLU A%4s CB CG CD OE1 OE2 HB2 HB3 HG2 HG3\n" $aminonum >> templist
+printf "#chop GLU A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen GLU A%4s  CB HBX\n" $aminonum >> tempfrozen
+echo "-1" >> changecharge
+if [[ "$status" == "attached" ]]; then
+echo "AtomPairRel 1.$aminonum.CD $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+if [[ $atombound==OE1 ]]
+then
+echo "AtomPairRel 1.$aminonum.OE2 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+else 
+echo "AtomPairRel 1.$aminonum.OE1 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+elif [[ "$status" == "free" ]]
+then
+for kk in CB CG CD OE1 OE2
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == TYR ]]; then
+printf "#list TYR A%4s HO OH CZ CE1 HCE1 CD1 HCD1 CG CD2 HCD2 CE2 HCE2 CB HCB2 HCB3\n" $aminonum >> templist
+printf "#chop TYR A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen TYR A%4s  CB HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo "AtomPairRel 1.$aminonum.CZ $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+echo "AtomPairRel 1.$aminonum.CD $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+echo "Static 1.$aminonum.HO" >> tempstatic
+elif [[ "$status" == "free" ]]
+then
+for kk in HO OH CZ CE1 CD1 CG CD2 CE2 CB
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == VAL ]]; then
+printf "#list VAL A%4s CB CG1 CG2 HB HG21 HG22 HG23 HG11 HG12 HG13\n" $aminonum >> templist
+printf "#chop VAL A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen VAL A%4s  CB HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in CB CG1 CG2 HB
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == SER ]]; then
+printf "#list SER A%4s HO CB HB2 HB3 OG HG 1HCB 2HCB\n" $aminonum >> templist
+printf "#chop SER A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen SER A%4s  CB HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo "AtomPairRel 1.$aminonum.CB.$metalbound -0.01 +0.01" >> tempatompairrel
+echo "Static 1.$aminonum.HO" >> tempstatic
+echo "Static 1.$aminonum.HG" >> tempstatic
+elif [[ "$status" == "free" ]]
+then
+for kk in HO CB OG HG
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == THR ]]; then
+printf "#list THR A%4s HO CB OG1 CG2 HG1 HB HG21 HG22 HG23 HCB HCG1 HCG2 HCG3\n" $aminonum >> templist
+printf "#chop THR A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen THR A%4s  CB HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo "AtomPairRel 1.$aminonum.CB $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+echo "Static 1.$aminonum.HG1" >> tempstatic
+echo "Static 1.$aminonum.HO" >> tempstatic
+elif [[ "$status" == "free" ]]
+then
+for kk in HO CB OG1 CG2
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == ASN ]]; then
+printf "#list ASN A%4s CG OD1 ND2 HD21 HD22\n" $aminonum >> templist
+printf "#chop ASN A%4s  CB CG HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen ASN A%4s  CG HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo "AtomPairRel 1.$aminonum.CG $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+if [[ $atombound==NE2 ]]
+then
+echo "AtomPairRel 1.$aminonum.OD1 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+else 
+echo "AtomPairRel 1.$aminonum.ND2 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+elif [[ "$status" == "free" ]]
+then
+for kk in CG OD1 ND2 HD21 HD22
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == GLN ]]; then
+printf "#list GLN A%4s CB CG CD OE1 NE2 HE22 HE21 HG2 HG3 HB2 HG3\n" $aminonum >> templist
+printf "#chop GLN A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen GLN A%4s  CB HBX\n" $aminonum >> tempfrozen
+echo "-1" >> changecharge
+if [[ "$status" == "attached" ]]; then
+echo "AtomPairRel 1.$aminonum.CD $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+if [[ $atombound==NE2 ]]
+then
+echo "AtomPairRel 1.$aminonum.OE1 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+else 
+echo "AtomPairRel 1.$aminonum.NE2 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+elif [[ "$status" == "free" ]]
+then
+for kk in CB CG CD OE1 NE2 HE22 HE21 HG2 HG3 HB2 HG3
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == CYS ]]; then
+printf "#list CYS A%4s CB SG HB2 HB3\n" $aminonum >> templist
+printf "#chop CYS A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen CYS A%4s  CB HBX\n" $aminonum >> tempfrozen
+echo "-1" >> changecharge
+if [[ "$status" == "attached" ]]; then
+echo " "
+echo "AtomPairRel 1.$aminonum.CB $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+elif [[ "$status" == "free" ]]
+then
+for kk in CB SG
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == CyS ]]; then
+printf "#list CYS A%4s CB SG HG HB2 HB3\n" $aminonum >> templist
+printf "#chop CYS A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen CYS A%4s  CB HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo "AtomPairRel 1.$aminonum.CB $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+echo "Static 1.$aminonum.HG" >> tempstatic
+elif [[ "$status" == "free" ]]
+then
+for kk in CB SG HG
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == GLY ]]; then
+printf "#list GLY A%4s CA HA2 HA3\n" $aminonum >> templist
+printf "#chop GLY A%4s  C CA HBX 0.7052\n" $aminonum >> tempchop
+printf "#chop GLY A%4s  N CA HBY 0.7000\n" $aminonum >> tempchop
+printf "#frozen GLY A%4s  CA HBX HBY\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in CA HA2 HA3
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == SEC ]]; then
+printf "#list SEC A%4s CB HB2 HB3 SE \n" $aminonum >> templist
+printf "#chop SEC A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen SEC A%4s  CB HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo " "
+echo "AtomPairRel 1.$aminonum.CB $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+elif [[ "$status" == "free" ]]
+then
+for kk in CB HB2 HB3 SE
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == PRO ]]; then
+printf "#list PRO A%4s N CA CB CG CD HA HB2 HB3 HG2 HG3 HD2 HD3\n" $aminonum >> templist
+printf "#chop PRO A%4s  C CA HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen PRO A%4s  CA HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in N CA CB CG CD HA HB2 HB3 HG2 HG3 HD2 HD3
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == ALA ]]; then
+printf "#list ALA A%4s CB HB1 HB2 HB3\n" $aminonum >> templist
+printf "#chop ALA A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen ALA A%4s  CB HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in CB HB1 HB2 HB3
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+
+if [[ $aminoname == ARG ]]; then
+printf "#list ARG A%4s CA CB CG CD NE CZ NH2 NH1 HE HH21 HH22 HH11 HH12\n" $aminonum >> templist
+printf "#chop ARG A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen ARG A%4s  CB HBX\n" $aminonum >> tempfrozen
+echo "+1" >> changecharge
+for kk in CA CB CG CD NE CZ NH2 NH1 HE HH21 HH22 HH11 HH12
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+
+if [[ $aminoname == ILE ]]; then
+printf "#list ILE A%4s CB CG1 CG2 CD1 HB HG21 HG23 HG22 HG13 HG12 HD11 HD12 HD13\n" $aminonum >> templist
+printf "#chop ILE A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen ILE A%4s  CB HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in CB CG1 CG2 CD1 HB HG21 HG23 HG22 HG13 HG12 HD11 HD12 HD13
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == LEU ]]; then
+printf "#list LEU A%4s CB CG CD1 CD2 HB2 HB3 HG HD11 HD12 HD13 HD21 HD22 HD23\n" $aminonum >> templist
+printf "#chop LEU A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen LEU A%4s  CB HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in CB CG CD1 CD2 HB2 HB3 HG HD11 HD12 HD13 HD21 HD22 HD23
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == MET ]]; then
+printf "#list MET A%4s CB CG SD CE HB2 HB3 HG2 HG3 HE1 HE2 HE3 1HE 2HE 3HE 1HB 2HB 1HG 2HG\n" $aminonum >> templist
+printf "#chop MET A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen MET A%4s  CB HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo "AtomPairRel 1.$aminonum.CE $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+echo "AtomPairRel 1.$aminonum.HE1 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+echo "AtomPairRel 1.$aminonum.CG1 $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+elif [[ "$status" == "free" ]]
+then
+for kk in CB CG SD CE HB2 HB3 HG2 HG3 HE1 HE2 HE3
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == PHE ]]; then
+printf "#list PHE A%4s CB CG CD1 CD2 CE1 CE2 CZ HB2 HB3 HD1 HD2 HE1 HE2 HZ\n" $aminonum >> templist
+printf "#chop PHE A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen PHE A%4s  CB HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in CB CG CD1 CD2 CE1 CE2 CZ HB2 HB3 HD1 HD2 HE1 HE2 HZ
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+if [[ $aminoname == TRP ]]; then
+printf "#list TRP A%4s CB CG CD1 NE1 CE2 CD2 CE3 CZ3 CH2 CZ2 HB2 HB3 HD1 HE1 HZ2 HH2 HZ3 HE3 \n" $aminonum >> templist
+printf "#chop TRP A%4s  CA CB HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen TRP A%4s  CB HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in CB CG CD1 NE1 CE2 CD2 CE3 CZ3 CH2 CZ2 HB2 HB3 HD1 HE1 HZ2 HH2 HZ3 HE3
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+# now let's take care of some "special" cases of unnatural amino acids or ones attached at the backbone
+
+if [[ $aminoname == HICbn ]]; then
+printf "#list HIC A%4s ND1 CE1 HE1 NE2 CZ HZ1 HZ2 HZ3 CD2 HD2 CG CB HB2 HB3 CA HA N H H2 \n" $aminonum >> templist
+printf "#chop HIC A%4s  C CA HBX 0.7052\n" $aminonum >> tempchop
+printf "#frozen TRP A%4s  CA HBX\n" $aminonum >> tempfrozen
+if [[ "$status" == "attached" ]]; then
+echo " "
+elif [[ "$status" == "free" ]]
+then
+for kk in ND1 CE1 HE1 NE2 CZ HZ1 HZ2 HZ3 CD2 HD2 CG CB HB2 HB3 CA HA N H H2
+do
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+if `grep $AMINONAME new.pdb | egrep "A$aminonum | $aminonum " | awk -F" " '{print $3}' | grep -q $kk`; then
+echo "AtomPairRel 1.$aminonum.$kk $metalnumber.1.$metalbound -0.01 +0.01" >> tempatompairrel
+fi
+done
+fi
+fi
+
+
+AMINONAME=`echo $aminoname | tr [a-z] [A-Z]`
+printf "\"$AMINONAME A%4s\" " $aminonum >> reslistresidues
+
+done
+
+
+# Here comes the easier part: QM and DMD constraints for the substrate, which we consider to be all of the nonmetal atoms as one substrate (except solvent)
+if [ -a sub.mol2 ]; then
+printf "\"SUB B%4s\" " $numm1 >> reslistresidues
+echo "#list SUB B   $numm1 `grep "HETATM" new.pdb | egrep -v "HOH|FOH" | tail -n +2 | awk -F" " '{printf "%s ",$3}'`" >> templist
+echo "Static $(($numm1+1)).*.*" >> tempstatic
+fi
+
+cat reslistresidues1 >> reslistresidues
+cat templist1 >> templist
+#These are the metal parameters from above. for some reason they need to be last.
+rm reslistresidues1
+rm templist1
+
+if [ -a _input ]; then rm _input; fi
+if [ -a input ]; then rm input; fi
+printf "export reslist=(" > _input
+cat reslistresidues >> _input
+echo ")" >> _input
+sed -i 's/ )/)/g' _input
+tr -d '\n' < _input > input
+echo " " >> input
+echo " " >> input
+cat templist >> input
+echo " " >> input
+cat tempchop >> input
+echo " " >> input
+cat tempfrozen >> input
+echo " " >> input
+echo "export Ti=0.1
+export Tf=0.1
+export n_cluster=3
+export steps_annealing=40
+export f_movie_dt=10
+export MAX_TIME=10000
+export Iterations=40
+export equilibrate=true
+export discard=true
+export convergeDMD=true
+export dmd_cores=4" >> input
+
+#### TEST ALERT ####
+# I'm just trying to
+# add solvent.
+
+if grep -q FOH new.pdb
+then
+manyter=`awk '/ATOM/,/FOH/' new.pdb | grep TER | wc -l`
+echo 
+echo "Static $manyter.*.*" > tempstatic
+fi
+
+echo " " >> inConstr
+if [ -a tempDeprot ]; then cat tempDeprot >> inConstr; echo " " >> inConstr; fi
+if [ -a tempProt ]; then cat tempProt >> inConstr; echo " " >> inConstr; fi
+cat tempstatic >> inConstr
+echo " " >> inConstr
+cat tempatompairrel >> inConstr
+
+rm metalsaminodist
+rm metals.temp
+rm reslistresidues
+rm tempatompairrel
+rm tempchop
+rm tempfrozen
+rm templist
+rm _input
+rm tempstatic

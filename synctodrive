@@ -1,0 +1,4 @@
+echo "\$1 is the source directory from hoffman2 (no slash at end)"
+echo "\$2 is the destination directory \(no slash at end and mostly uses \".\"\)."
+
+rsync -auv -e ssh mnechay@hoffman2.idre.ucla.edu:~mnechay/$1 mike/$2

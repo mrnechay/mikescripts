@@ -1,0 +1,81 @@
+# This takes the coord file of a specifice turbomole run and takes pics from 8 angles and saves them all as png images in a folder within the home computer
+if [ -d structures ]
+then
+echo " "
+else
+mkdir structures
+fi
+
+for ii in `echo */ | sed s:/::g`
+do
+
+if [ -a $ii/coord ]
+then
+
+if [ -a structures/$ii.xyz ]
+then
+cd $ii
+t2x coord > ../structures/$ii_2.xyz 2> /dev/null
+cd ..
+else
+cd $ii
+t2x coord > ../structures/$ii.xyz 2> /dev/null
+cd ..
+fi
+
+fi
+done
+
+
+echo "xyz files output to pics directory"
+echo "copy this and run from home terminal:"
+
+username=`pwd | awk -F"/" '{print $5}'`
+tfolder=`pwd | awk -F"/" '{print $NF}'`
+
+cd structures
+
+echo "cmd.bg_color('white')
+cmd.show(\"nb_spheres\",\"all\")
+cmd.show(\"sticks\"    ,\"all\")
+ray 480, 480
+save 000deg.png
+rotate y, 60
+ray 480, 480
+save 060deg.png
+rotate y, 60
+ray 480, 480
+save 120deg.png
+rotate y, 60
+ray 480, 480
+save 180deg.png
+rotate y, 60
+ray 480, 480
+save 240deg.png
+rotate y, 60
+ray 480, 480
+save 300deg.png
+rotate z, 90
+ray 480, 480
+save top.png
+rotate z, 270
+ray 480, 480
+save bot.png" > pymolscript0.pml
+
+echo "cd \$2/\$1
+for kk in \`ls *.xyz\`
+do
+nameofdir=\`echo \$kk | awk -F\".\" '{print \$1}'\`
+mkdir \$nameofdir
+cat <(echo \"load \$2/\$1/\$kk\") pymolscript0.pml > \$nameofdir\_script.pml
+cd \$nameofdir
+pymol -c ../\$nameofdir\_script.pml
+cd ..
+done" > part2.sh
+
+chmod 761 part2.sh
+path=`pwd`
+cd ..
+echo "path=\`pwd\`"
+echo "scp -r $username@hoffman2.idre.ucla.edu:$path ./$tfolder@xyz"
+echo "./$tfolder@xyz/part2.sh $tfolder@xyz \$path"

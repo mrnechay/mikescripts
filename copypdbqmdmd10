@@ -1,0 +1,91 @@
+#this copies at most 4 pdb files from all qmdmd directories in the present path. the lowest energy, lowest in last 10 iterations, highest in last 10 iterations, and the most recent one
+#
+if [ -d xyzfiles ]; then rm -r xyzfiles; fi
+mkdir xyzfiles
+for jj in `echo */ | sed 's:/::g'`
+do
+if [ -a $jj/qm_opt_energies.dat ]
+then
+mkdir xyzfiles/$jj
+
+num1=`cat $jj/qm_opt_energies.dat | tail -10 | awk -F" " '{print $1}' | head -n 1 | tail -1`
+num2=`cat $jj/qm_opt_energies.dat | tail -10 | awk -F" " '{print $1}' | head -n 2 | tail -1`
+num3=`cat $jj/qm_opt_energies.dat | tail -10 | awk -F" " '{print $1}' | head -n 3 | tail -1`
+num4=`cat $jj/qm_opt_energies.dat | tail -10 | awk -F" " '{print $1}' | head -n 4 | tail -1`
+num5=`cat $jj/qm_opt_energies.dat | tail -10 | awk -F" " '{print $1}' | head -n 5 | tail -1`
+num6=`cat $jj/qm_opt_energies.dat | tail -10 | awk -F" " '{print $1}' | head -n 6 | tail -1`
+num7=`cat $jj/qm_opt_energies.dat | tail -10 | awk -F" " '{print $1}' | head -n 7 | tail -1`
+num8=`cat $jj/qm_opt_energies.dat | tail -10 | awk -F" " '{print $1}' | head -n 8 | tail -1`
+num9=`cat $jj/qm_opt_energies.dat | tail -10 | awk -F" " '{print $1}' | head -n 9 | tail -1`
+num10=`cat $jj/qm_opt_energies.dat | tail -10 | awk -F" " '{print $1}' | head -n 10 | tail -1`
+
+#higherenum=`cat $jj/qm_opt_energies.dat | tail -10 | sort -k2 -n | tail -1 | awk -F" " '{print $1}'`
+#lowerenum=`cat $jj/qm_opt_energies.dat | tail -10 | sort -k2 -n | head -n +1 | awk -F" " '{print $1}'`
+#lowestenum=`cat $jj/qm_opt_energies.dat | sort -k2 -n | head -n +1 | awk -F" " '{print $1}'`
+#lastenum=`cat $jj/qm_opt_energies.dat | tail -1 | awk -F" " '{print $1}' | awk -F" " '{print $1}'`
+
+cp $jj/Iteration_$num1/optimized_qm.xyz xyzfiles/$jj/$jj\_$num1.xyz
+cp $jj/Iteration_$num2/optimized_qm.xyz xyzfiles/$jj/$jj\_$num2.xyz
+cp $jj/Iteration_$num3/optimized_qm.xyz xyzfiles/$jj/$jj\_$num3.xyz
+cp $jj/Iteration_$num4/optimized_qm.xyz xyzfiles/$jj/$jj\_$num4.xyz
+cp $jj/Iteration_$num5/optimized_qm.xyz xyzfiles/$jj/$jj\_$num5.xyz
+cp $jj/Iteration_$num6/optimized_qm.xyz xyzfiles/$jj/$jj\_$num6.xyz
+cp $jj/Iteration_$num7/optimized_qm.xyz xyzfiles/$jj/$jj\_$num7.xyz
+cp $jj/Iteration_$num8/optimized_qm.xyz xyzfiles/$jj/$jj\_$num8.xyz
+cp $jj/Iteration_$num9/optimized_qm.xyz xyzfiles/$jj/$jj\_$num9.xyz
+cp $jj/Iteration_$num10/optimized_qm.xyz xyzfiles/$jj/$jj\_$num10.xyz
+
+
+#cp $jj/Iteration_$lowerenum/optimized_qm.xyz xyzfiles/$jj/$jj\_lower_$lowerenum.xyz
+#cp $jj/Iteration_$lowestenum/optimized_qm.xyz xyzfiles/$jj/$jj\_lowest_$lowestenum.xyz
+#cp $jj/Iteration_$lastenum/optimized_qm.xyz xyzfiles/$jj/$jj\_last_$lastenum.xyz
+
+fi
+
+done
+echo "xyz files output to xyzfiles directory"
+echo "copy this and run from home terminal:"
+username=`pwd | awk -F"/" '{print $5}'`
+qfolder=`pwd | awk -F"/" '{print $NF}'`
+cd xyzfiles
+echo "cmd.bg_color('white')
+cmd.show(\"nb_spheres\",\"all\")
+cmd.show(\"sticks\"    ,\"all\")
+ray 300, 300
+save 000deg.png
+rotate y, 60
+ray 300, 300
+save 060deg.png
+rotate y, 60
+ray 300, 300
+save 120deg.png
+rotate y, 60
+ray 300, 300
+save 180deg.png
+rotate y, 60
+ray 300, 300
+save 240deg.png
+rotate y, 60
+ray 300, 300
+save 300deg.png" > pymolscript0.pml
+echo "cd \$2/\$1
+for jj in \`echo */ | sed 's:/::g'\`
+do
+cd \$jj
+#below ensures this is run for all xyz files in the folder
+for kk in \`ls *.xyz\`
+do
+iteration=\`echo \$kk | awk -F\"_\" '{print \$NF}' | awk -F\".\" '{print \$1}'\`
+cat <(echo \"load \$2/\$1/\$jj/\$kk\") ../pymolscript0.pml > \$kk\_script.pml
+pymol -c \$kk\_script.pml
+montage 000deg.png 060deg.png 120deg.png 180deg.png 240deg.png 300deg.png -geometry '300x300+2+2>' -shadow -background '#DDDDDD' -title \"\$jj Optimized QM region of Iteration #\$iteration\" -font Helvetica ../\$kk.png
+rm 000deg.png 060deg.png 120deg.png 180deg.png 240deg.png 300deg.png
+done
+cd ..
+done" > part2.sh
+chmod 761 part2.sh
+path=`pwd`
+cd ..
+echo "path=\`pwd\`"
+echo "scp -r $username@hoffman2.idre.ucla.edu:$path ./$qfolder@xyz"
+echo "./$qfolder@xyz/part2.sh $qfolder@xyz \$path"

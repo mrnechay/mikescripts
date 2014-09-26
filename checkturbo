@@ -1,0 +1,43 @@
+#!/bin/bash
+# 1 is the turbomole directory
+
+if [ -a tempgenentableTtable ]; then rm tempgenentableTtable; fi
+if [ -a tempgenentableTtable2 ]; then rm tempgenentableTtable2; fi
+echo "name,totalenergy(andOCcorrection),converged?" > tempgenentableTtable
+
+for jj in `echo */ | sed 's:/::g'`
+do
+if [ -a $jj/control ]
+then
+if [ -a $jj/GEO_OPT_CONVERGED ]; then converged=yes; else converged=no; fi
+
+if [ -a $jj/job.last ]
+then
+energy=`cat $jj/job.last | grep "Total energy" | tail -1 | awk -F" " '{print $NF}'`
+elif [ -a $jj/ridft.out ]
+then
+energy=`cat $jj/ridft.out | grep "Total energy" | tail -1 | awk -F" " '{print $NF}'`
+fi
+
+if [ -z $energy ]
+then
+
+if [ -a $jj/job.last ]
+then
+energy=`grep "total energy" $jj/job.last | tail -1 | awk -F" " '{print $5}'`
+elif [ -a $jj/ridft.out ]
+then
+energy=`grep "total energy" $jj/ridft.out | tail -1 | awk -F" " '{print $5}'`
+fi
+
+fi
+if [ -z $energy ]
+then
+energy=na
+fi
+
+echo "$jj,$energy,$converged" >> tempgenentableTtable
+fi
+done
+
+cat tempgenentableTtable | sed 's/,/ /g' | column -t

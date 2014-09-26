@@ -1,0 +1,69 @@
+#!/bin/bash
+# $1 is the file I want to do a single point calculation on. $2 is charge, $3 is multiplicity, $4 is cosmo flag which only works for Zn so far. $5 is flag if want to run somewhere else
+# quicksp coord charge multiplicity
+# quicksp coord 0 1
+# this script also only works for singlets so far
+
+set -x
+
+filename=`echo $1 | awk -F"." '{print $1}'`
+filetype=`echo $1 | awk -F"." '{print $NF}'`
+echo "$filename $filetype"
+
+if [ -d $filename\_sp ]; then rm -r $1\_sp; fi
+mkdir $filename\_sp
+
+if [ $1 == coord ]
+then
+cp coord $filename\_sp/
+elif [ $filetype == xyz ]
+then
+x2t $1 > $filename\_sp/coord
+elif [ $filetype == pdb ]
+then
+babel -ipdb $1 -oxyz $filename.xyz
+x2t $filename.xyz > $filename\_sp/coord
+elif [ $filetype == mol2 ]
+then
+babel -imol2 $1 -oxyz $filename.xyz
+x2t $filename.xyz > $filename\_sp/coord
+fi
+
+cd $filename\_sp
+eval $( quickdefine $2 | head -n +1 )
+scf=`grep scfiterlimit control | awk -F" " '{print $NF}'`
+pwd
+grep scfiterlimit control
+echo "about to enter check"
+if [ $scf != 500 ]
+then
+rmall coord
+eval $( quickdefine $2 | tail -1 )
+scf=`grep scfiterlimit control | awk -F" " '{print $NF}'`
+if [ $scf != 500 ]
+then
+echo "the define script is not working. Sorry, please check it out."
+exit 0
+fi
+fi
+
+sed -i '/\$dft/i \\$disp3' control
+sed -i 's/\$scforbitalshift  closedshell.*/\$scforbitalshift automatic 0.1/g' control
+sed -i '/\$scfconv/d' control
+sed -i '/\$scfdamp/d' control
+sed -i '/\$scfiterlimit/a \\$scfdamp   start=4.700  step=0.050  min=0.100' control
+sed -i '/\$scfiterlimit/a \\$scfconv   5' control
+
+
+echo "ridft >> ridft.out " > script.sh
+chmod +x script.sh
+
+if [[ $4 == cosmo ]]
+then
+echo -e "80\n\n\n\n\n\n\n\nr all o\nr \"zn\" 1.626\n*\n\n" | cosmoprep
+fi
+
+runturbomole.exclusive.sh -sub -N 4 -t 5 script.sh
+cd ..
+
+

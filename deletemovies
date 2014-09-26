@@ -1,0 +1,35 @@
+# deletes movie files from DMD runs. make sure to save them elsewhere first
+
+# location=`pwd`
+
+#for ii in `echo */ | sed s:/::g`
+#do
+#if [ -d $location/$ii ]; then cd $location/$ii; fi
+#	for jj in `echo */ | sed s:/::g`
+#	do
+#	if [ -d $location/$ii/$jj ]; then cd $location/$ii/$jj; fi
+#		for kk in `echo */ | sed s:/::g`
+#		do
+#		if [ -d $location/$ii/$jj/$kk ]; then cd $location/$ii/$jj/$kk; fi
+#			for ll in `echo */ | sed s:/::g`
+#			do
+#			if [ -d $location/$ii/$jj/$kk/$ll ]; then cd $location/$ii/$jj/$kk/$ll; fi
+#				if [ -a movie ]
+#				then
+#				echo "movie"
+#				pwd
+#				else
+#				echo "no movie"
+#				pwd
+#				fi
+#			cd $location/$ii/$jj/$kk/
+#			done
+#		cd $location/$ii/$jj/
+#		done
+#	cd $location/$ii/
+#	done
+#cd $location
+#done
+#
+
+find . -maxdepth 5 -name \movie -delete

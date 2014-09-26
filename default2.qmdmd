@@ -1,0 +1,84 @@
+####################
+#                  #
+#   QM/DMD input   #
+#                  #
+####################
+
+Basic cluster options:
+  slots            = yay
+  time             = yay
+  exclusive        = yay
+
+Calculation basics (substrate and metal ONLY):
+  charge           = yay
+  multiplicity     = yay
+
+# The script will account for negative/positive charged residues
+
+DMD options:
+  Initial T (Ti)   = yay
+  Final T (Tf)     = yay
+  Cluster size     = yay
+  Steps annealing  = yay
+  Movie dt         = yay
+  DMD time steps   = yay
+  Max Iteration    = yay
+  Equilibrate      = yay
+  Discard          = yay
+  Converge DMD     = yay
+
+QM Residues and optional adjustments:
+  HIS55-HIS57N     = default-default
+  glu59            = default
+  asp74            = default
+  CYS101           = default
+
+# Other flags (to the right of equals sign, separate multiple with commas):
+# 
+# Prot1 - protonate atom 1
+# DProt - deprotonate
+# FrzBB - freeze backbone
+# FrzAA - freeze entire amino acid
+#
+# "Frz" commands propogate through entire sequence if more than one amino acid is specified
+# 
+# By default, these options only apply to the atoms explicitly specified in a range (e.g. HIS55-HIS57N)
+# If you want to change an option for a residue within the range a previous assignment, call it on a separate line
+# (this extra line will not be cut any differently; the entire side chain will be included)
+
+
+# Include only the functional head if lowercase or cut at the alpha carbon if in UPPER case.
+#
+#                 
+#     glu59
+#   cuts here            
+#   O   |         C==O
+#    \  v         |
+#     C---C---C---C
+#    /          ^ |
+#   O           | N
+#               |
+#             GLU59
+#           cuts here    
+#
+# Multi-residue lines will include entire side chains and the backbone, cut
+# between the alpha and the carbonyl carbon (default), between alpha carbon and nitrogen
+# (follow w/ N), or cut the peptide bond (follow w/ P; this is not recommended)
+#
+#    +--------------------------+
+#    |    Q M    R E G I O N    |
+#    \                         /
+#     \                       /
+#      HIS55             HIS57 
+#        R     O           R     O       
+#        |     ‖           |     ‖      
+# ~N--C--C--N--C--C--N--C--C--N--C--C--N~ 
+#     ‖ ^         |     ‖    ^      |    
+#     O |         R     O    |      R   
+#       |       asp56        |
+#       |                    |
+#  (cuts here)-----------(to here)
+#
+# his55-his57N [illustrated]
+#
+#

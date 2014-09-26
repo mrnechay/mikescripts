@@ -1,0 +1,51 @@
+#!/bin/bash
+currentworking=`pwd`
+
+if [ -f ~/stats/fs ]; then rm ~/stats/fs; fi
+if [ -f ~/stats/fc ]; then rm ~/stats/fc; fi
+if [ -f ~/stats/us ]; then rm ~/stats/us; fi
+
+echo "username:" >> ~/stats/us
+echo "appr_disk(GB):" >> ~/stats/fs
+echo "files" >> ~/stats/fc
+
+#for ii in ha22m cediev87; do
+for ii in aa abbas an5989 ana calebhua djurwin enolate ha22m lushen oirving pcbao sparta-ana xmyway zhangjin cediev87 qsmith ngallup mnechay snedd iz0mbie; do
+  if [ -f ~/stats/$ii ]; then rm ~/stats/$ii; fi
+  if [ -f ~/stats/$ii\_c ]; then rm ~/stats/$ii\_c; fi
+  firstLetter=`echo ${ii:0:1}`
+  if [ -d /u/home/$firstLetter/$ii ]; then
+    cd /u/home/$firstLetter/$ii/
+    newworking=`pwd`
+    supposedtobe=/u/home/$firstLetter/$ii
+    if [ "$newworking" == "$supposedtobe" ]; then
+      du -sh */ >~/stats/$ii 2>/dev/null
+      jiggabytes=`cat ~/stats/$ii | awk -F" " '{print $1}' | grep G | sed s/G//g | tr '\n' '+' | sed 's/+$/\n/g' | bc`
+      miggabytes=`cat ~/stats/$ii | awk -F" " '{print $1}' | grep G | sed s/M//g | tr '\n' '+' | sed 's/+$/\n/g' | bc`
+      cd project
+      newworking=`pwd | awk -F"/" '{print $NF}'`
+      if [ "$newworking" == "project" ]; then
+        find . -type f -print | wc -l >~/stats/$ii\_c 2>/dev/null
+        filecount=`cat ~/stats/$ii\_c`
+      else
+        filecount=na
+      fi
+      if [ "$jiggabytes" ]; then
+        echo $jiggabytes >> ~/stats/fs
+      else
+        echo "N/A" >> ~/stats/fs
+      fi
+      echo $filecount >> ~/stats/fc
+      echo $ii >> ~/stats/us
+    fi
+  else
+    :
+  fi
+done
+
+cd $currentworking
+
+if [ -f ~/stats/latest ]; then rm ~/stats/latest; fi
+paste <(cat ~/stats/us) <(cat ~/stats/fc) <(cat ~/stats/fs) | column -t > ~/stats/latest
+paste <(cat ~/stats/us) <(cat ~/stats/fc) <(cat ~/stats/fs) | column -t
+echo "This has also been saved in stats folder"

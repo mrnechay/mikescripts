@@ -1,0 +1,4 @@
+for ii in `myjobs | awk -F" " '{print $1}' | egrep -v job | egrep -v '\-\-\-\-' | tr '\n' ' ' | sed 's/$/\n/g'`
+do
+qj $ii
+done

@@ -1,0 +1,29 @@
+#!/bin/bash
+
+filename=`echo $1 | awk -F"." '{print $1}'`
+
+awk '
+    ($NF=="N" || $NF=="O" ) || \
+    ($NF=="H" ) {
+        atom[$2] = 1
+        x[$2] = $7
+        y[$2] = $8
+        z[$2] = $9
+	name[$2] = $NF
+    }
+    END {
+        for (a in atom) {
+            for (b in atom) {
+                if (a > b && name[a] != name[b] ) {
+		
+                    dist = sqrt((x[a]-x[b])^2 + (y[a]-y[b])^2 + (z[a]-z[b])^2)
+                    if (dist < 1.2)
+                        printf "sed -i s/%s.*%s.*%s.*Eh/%s0\\ \\ \\ %s0\\ \\ \\ %s0\\ H\\ /g sub.mol2\nsed -i s/%s.*%s.*%s.*Eh/%s0\\ \\ \\ %s0\\ \\ \\ %s0\\ H\\ /g sub.mol2\n", x[a], y[a], z[a], x[a], y[a], z[a], x[b], y[b], z[b], x[b], y[b], z[b]
+                }
+            }
+        }
+    }
+' $1
+
+
+#                        printf "%s.*%s.*%s.*%s\n%s.*%s.*%s.*%s\n", x[a], y[a], z[a], name[a], x[b], y[b], z[b], name[b]

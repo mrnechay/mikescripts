@@ -1,0 +1,268 @@
+#!/bin/bash
+# Shows first line of frequencies in Gaussian input. $1 should be full log file like run.log
+
+if [ -e "$1.out" ]
+then
+
+if [ -e "oo" ]
+then
+echo "oops, a temporary file I want to use is already there..."
+else
+grep -C 10 "Standard orientation" $1.out | tail -n -6 | awk '{print $2}' > oo
+grep -C 10 "Standard orientation" $1.out | tail -n -6 | awk '{print $4, $5, $6}' > ooo
+sed -i "s/118/Uuo/g" oo
+sed -i "s/117/Uus/g" oo
+sed -i "s/116/Lv/g" oo
+sed -i "s/115/Uup/g" oo
+sed -i "s/114/Fl/g" oo
+sed -i "s/113/Uut/g" oo
+sed -i "s/112/Cn/g" oo
+sed -i "s/111/Rg/g" oo
+sed -i "s/110/Ds/g" oo
+sed -i "s/109/Mt/g" oo
+sed -i "s/108/Hs/g" oo
+sed -i "s/107/Bh/g" oo
+sed -i "s/106/Sg/g" oo
+sed -i "s/105/Db/g" oo
+sed -i "s/104/Rf/g" oo
+sed -i "s/103/Lr/g" oo
+sed -i "s/102/No/g" oo
+sed -i "s/101/Md/g" oo
+sed -i "s/100/Fm/g" oo
+sed -i "s/99/Es/g" oo
+sed -i "s/98/Cf/g" oo
+sed -i "s/97/Bk/g" oo
+sed -i "s/96/Cm/g" oo
+sed -i "s/95/Am/g" oo
+sed -i "s/94/Pu/g" oo
+sed -i "s/93/Np/g" oo
+sed -i "s/92/U/g" oo
+sed -i "s/91/Pa/g" oo
+sed -i "s/90/Th/g" oo
+sed -i "s/89/Ac/g" oo
+sed -i "s/88/Ra/g" oo
+sed -i "s/87/Fr/g" oo
+sed -i "s/86/Rn/g" oo
+sed -i "s/85/At/g" oo
+sed -i "s/84/Po/g" oo
+sed -i "s/83/Bi/g" oo
+sed -i "s/82/Pb/g" oo
+sed -i "s/81/Tl/g" oo
+sed -i "s/80/Hg/g" oo
+sed -i "s/79/Au/g" oo
+sed -i "s/78/Pt/g" oo
+sed -i "s/77/Ir/g" oo
+sed -i "s/76/Os/g" oo
+sed -i "s/75/Re/g" oo
+sed -i "s/74/W/g" oo
+sed -i "s/73/Ta/g" oo
+sed -i "s/72/Hf/g" oo
+sed -i "s/71/Lu/g" oo
+sed -i "s/70/Yb/g" oo
+sed -i "s/69/Tm/g" oo
+sed -i "s/68/Er/g" oo
+sed -i "s/67/Ho/g" oo
+sed -i "s/66/Dy/g" oo
+sed -i "s/65/Tb/g" oo
+sed -i "s/64/Gd/g" oo
+sed -i "s/63/Eu/g" oo
+sed -i "s/62/Sm/g" oo
+sed -i "s/61/Pm/g" oo
+sed -i "s/60/Nd/g" oo
+sed -i "s/59/Pr/g" oo
+sed -i "s/58/Ce/g" oo
+sed -i "s/57/La/g" oo
+sed -i "s/56/Ba/g" oo
+sed -i "s/55/Cs/g" oo
+sed -i "s/54/Xe/g" oo
+sed -i "s/53/I/g" oo
+sed -i "s/52/Te/g" oo
+sed -i "s/51/Sb/g" oo
+sed -i "s/50/Sn/g" oo
+sed -i "s/49/In/g" oo
+sed -i "s/48/Cd/g" oo
+sed -i "s/47/Ag/g" oo
+sed -i "s/46/Pd/g" oo
+sed -i "s/45/Rh/g" oo
+sed -i "s/44/Ru/g" oo
+sed -i "s/43/Tc/g" oo
+sed -i "s/42/Mo/g" oo
+sed -i "s/41/Nb/g" oo
+sed -i "s/40/Zr/g" oo
+sed -i "s/39/Y/g" oo
+sed -i "s/38/Sr/g" oo
+sed -i "s/37/Rb/g" oo
+sed -i "s/36/Kr/g" oo
+sed -i "s/35/Br/g" oo
+sed -i "s/34/Se/g" oo
+sed -i "s/33/As/g" oo
+sed -i "s/32/Ge/g" oo
+sed -i "s/31/Ga/g" oo
+sed -i "s/30/Zn/g" oo
+sed -i "s/29/Cu/g" oo
+sed -i "s/28/Ni/g" oo
+sed -i "s/27/Co/g" oo
+sed -i "s/26/Fe/g" oo
+sed -i "s/25/Mn/g" oo
+sed -i "s/24/Cr/g" oo
+sed -i "s/23/V/g" oo
+sed -i "s/22/Ti/g" oo
+sed -i "s/21/Sc/g" oo
+sed -i "s/20/Ca/g" oo
+sed -i "s/19/K/g" oo
+sed -i "s/18/Ar/g" oo
+sed -i "s/17/Cl/g" oo
+sed -i "s/16/S/g" oo
+sed -i "s/15/P/g" oo
+sed -i "s/14/Si/g" oo
+sed -i "s/13/Al/g" oo
+sed -i "s/12/Mg/g" oo
+sed -i "s/11/Na/g" oo
+sed -i "s/10/Ne/g" oo
+sed -i "s/9/F/g" oo
+sed -i "s/8/O/g" oo
+sed -i "s/7/N/g" oo
+sed -i "s/6/C/g" oo
+sed -i "s/5/B/g" oo
+sed -i "s/4/Be/g" oo
+sed -i "s/3/Li/g" oo
+sed -i "s/2/He/g" oo
+sed -i "s/1/H/g" oo
+paste -d" " oo ooo
+rm oo
+fi
+
+elif [ -e "$1.log" ]
+then
+
+if [ -e "oo" ]
+then
+echo "oops, a temporary file I want to use is already there..."
+else
+grep -C 10 "Standard orientation" $1.log | tail -n -6 | awk '{print $2}' > oo
+grep -C 10 "Standard orientation" $1.log | tail -n -6 | awk '{print $4, $5, $6}' > ooo
+sed -i "s/118/Uuo/g" oo
+sed -i "s/117/Uus/g" oo
+sed -i "s/116/Lv/g" oo
+sed -i "s/115/Uup/g" oo
+sed -i "s/114/Fl/g" oo
+sed -i "s/113/Uut/g" oo
+sed -i "s/112/Cn/g" oo
+sed -i "s/111/Rg/g" oo
+sed -i "s/110/Ds/g" oo
+sed -i "s/109/Mt/g" oo
+sed -i "s/108/Hs/g" oo
+sed -i "s/107/Bh/g" oo
+sed -i "s/106/Sg/g" oo
+sed -i "s/105/Db/g" oo
+sed -i "s/104/Rf/g" oo
+sed -i "s/103/Lr/g" oo
+sed -i "s/102/No/g" oo
+sed -i "s/101/Md/g" oo
+sed -i "s/100/Fm/g" oo
+sed -i "s/99/Es/g" oo
+sed -i "s/98/Cf/g" oo
+sed -i "s/97/Bk/g" oo
+sed -i "s/96/Cm/g" oo
+sed -i "s/95/Am/g" oo
+sed -i "s/94/Pu/g" oo
+sed -i "s/93/Np/g" oo
+sed -i "s/92/U/g" oo
+sed -i "s/91/Pa/g" oo
+sed -i "s/90/Th/g" oo
+sed -i "s/89/Ac/g" oo
+sed -i "s/88/Ra/g" oo
+sed -i "s/87/Fr/g" oo
+sed -i "s/86/Rn/g" oo
+sed -i "s/85/At/g" oo
+sed -i "s/84/Po/g" oo
+sed -i "s/83/Bi/g" oo
+sed -i "s/82/Pb/g" oo
+sed -i "s/81/Tl/g" oo
+sed -i "s/80/Hg/g" oo
+sed -i "s/79/Au/g" oo
+sed -i "s/78/Pt/g" oo
+sed -i "s/77/Ir/g" oo
+sed -i "s/76/Os/g" oo
+sed -i "s/75/Re/g" oo
+sed -i "s/74/W/g" oo
+sed -i "s/73/Ta/g" oo
+sed -i "s/72/Hf/g" oo
+sed -i "s/71/Lu/g" oo
+sed -i "s/70/Yb/g" oo
+sed -i "s/69/Tm/g" oo
+sed -i "s/68/Er/g" oo
+sed -i "s/67/Ho/g" oo
+sed -i "s/66/Dy/g" oo
+sed -i "s/65/Tb/g" oo
+sed -i "s/64/Gd/g" oo
+sed -i "s/63/Eu/g" oo
+sed -i "s/62/Sm/g" oo
+sed -i "s/61/Pm/g" oo
+sed -i "s/60/Nd/g" oo
+sed -i "s/59/Pr/g" oo
+sed -i "s/58/Ce/g" oo
+sed -i "s/57/La/g" oo
+sed -i "s/56/Ba/g" oo
+sed -i "s/55/Cs/g" oo
+sed -i "s/54/Xe/g" oo
+sed -i "s/53/I/g" oo
+sed -i "s/52/Te/g" oo
+sed -i "s/51/Sb/g" oo
+sed -i "s/50/Sn/g" oo
+sed -i "s/49/In/g" oo
+sed -i "s/48/Cd/g" oo
+sed -i "s/47/Ag/g" oo
+sed -i "s/46/Pd/g" oo
+sed -i "s/45/Rh/g" oo
+sed -i "s/44/Ru/g" oo
+sed -i "s/43/Tc/g" oo
+sed -i "s/42/Mo/g" oo
+sed -i "s/41/Nb/g" oo
+sed -i "s/40/Zr/g" oo
+sed -i "s/39/Y/g" oo
+sed -i "s/38/Sr/g" oo
+sed -i "s/37/Rb/g" oo
+sed -i "s/36/Kr/g" oo
+sed -i "s/35/Br/g" oo
+sed -i "s/34/Se/g" oo
+sed -i "s/33/As/g" oo
+sed -i "s/32/Ge/g" oo
+sed -i "s/31/Ga/g" oo
+sed -i "s/30/Zn/g" oo
+sed -i "s/29/Cu/g" oo
+sed -i "s/28/Ni/g" oo
+sed -i "s/27/Co/g" oo
+sed -i "s/26/Fe/g" oo
+sed -i "s/25/Mn/g" oo
+sed -i "s/24/Cr/g" oo
+sed -i "s/23/V/g" oo
+sed -i "s/22/Ti/g" oo
+sed -i "s/21/Sc/g" oo
+sed -i "s/20/Ca/g" oo
+sed -i "s/19/K/g" oo
+sed -i "s/18/Ar/g" oo
+sed -i "s/17/Cl/g" oo
+sed -i "s/16/S/g" oo
+sed -i "s/15/P/g" oo
+sed -i "s/14/Si/g" oo
+sed -i "s/13/Al/g" oo
+sed -i "s/12/Mg/g" oo
+sed -i "s/11/Na/g" oo
+sed -i "s/10/Ne/g" oo
+sed -i "s/9/F/g" oo
+sed -i "s/8/O/g" oo
+sed -i "s/7/N/g" oo
+sed -i "s/6/C/g" oo
+sed -i "s/5/B/g" oo
+sed -i "s/4/Be/g" oo
+sed -i "s/3/Li/g" oo
+sed -i "s/2/He/g" oo
+sed -i "s/1/H/g" oo
+paste -d" " oo ooo
+rm oo
+fi
+
+else
+echo "log file doesn't seem to exist, or at least doesn't have extension .log or .out"
+fi

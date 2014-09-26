@@ -1,0 +1,12 @@
+# $1 is the turbomole directory
+# $2 is the file output for energies folder
+
+cd $1
+
+converged=`echo GEO*`
+energy=`grep "Total energy" job.last | tail -1 | awk -F" " '{print $NF}'`
+
+echo $1,$energy,$converged >> ~/Dropbox/syncThis/$2.csv
+
+cd ..
+

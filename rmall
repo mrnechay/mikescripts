@@ -1,0 +1,13 @@
+#!/bin/bash
+# remove all files except that one stated
+
+mkdir ../grrrrr
+cp $1 ../grrrrr/
+if [ -a ../grrrrr/$1 ]
+then
+rm *
+else
+echo "something went wrong with rmall"
+fi
+cp ../grrrrr/$1 $1
+rm -r ../grrrrr

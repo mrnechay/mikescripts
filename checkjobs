@@ -1,0 +1,64 @@
+if [ -a currentlyrunning ]; then rm currentlyrunning; fi
+qstat -r -u mnechay | grep mnechay | awk -F" " '{print $1,$6}' > currentlyrunning
+
+IFS=$'\n' read -d '' -r -a currentjobs < currentlyrunning
+for ii in "${currentjobs[@]}"
+do
+job=`echo $ii | awk -F" " '{print $1}'`
+paste <(echo $job) <(qj $job | head -n +1 | awk -F" " '{print $2}') >> currentjoblocations
+done
+
+if [ -a oldjobs ]; then rm oldjobs; fi
+cat ~/mikescripts/oldjobs > oldjobs
+
+# we can figure out which have changed status
+join <(sort currentlyrunning) <(sort oldjobs) | awk -F' ' '$2!=$3 {print $1,"changed status on",$2}'
+
+# this will show job IDs that are either in oldjobs and not currentlyrunning, or only in currentlyrunning:
+
+#comm -3 <(cat currentlyrunning | awk -F" " '{print $1}') <(cat oldjobs | awk -F" " '{print $1}')
+
+# are these old jobs?
+echo " "
+echo "The following jobs are complete:"
+join <(comm -3 <(cat currentlyrunning | awk -F" " '{print $1}') <(cat oldjobs | awk -F" " '{print $1}')) <(cat oldjobs) | awk -F" " '{print $1}' > compjobs
+IFS=$'\n' read -d '' -r -a compjobs < compjobs
+
+# for ii in ${compjobs[@]}
+# do
+# paste <(echo $ii) <(qj $ii | head -n +1 | awk -F" " '{print $1}')
+# done
+
+echo " "
+echo "Jobs currently running:"
+qstat -r -u mnechay | grep mnechay
+
+# now we need to do filekeeping: update the oldjobs files and clean out old entries
+
+cat currentjoblocations >> ~/mikescripts/oldjoblocations
+
+comm -23 currentlyrunning oldjobs >> oldjobs
+
+sort -b -k1,1n -k2,2r oldjobs | awk -F'[. ]' '{ if (a[$1]++ == 0) print }' > _oldjobs
+
+
+mv _oldjobs ~/mikescripts/oldjobs
+
+noflines=`cat ~/mikescripts/oldjobs | wc -l`
+x=1
+while [ $x -le $noflines ]
+do
+datetocompare=`cat ~/mikescripts/oldjobs | head -n +$x | tail -1 | awk -F" " '{print $2}'`
+datenow=`date +"%m/%d/20%y"`
+diff=`echo $(( ($(date --date="$datenow" +%s) - $(date --date="$datetocompare" +%s) )/(60*60*24) ))`
+
+if [ $diff -le 3 ]
+then
+cat ~/mikescripts/oldjobs | head -n +$x | tail -1 >> cleaned
+fi
+
+x=$(($x + 1))
+
+done
+
+mv cleaned ~/mikescripts/oldjobs

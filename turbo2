@@ -1,0 +1,64 @@
+#!/bin/bash 
+#
+# A script to run TURBOMOLE
+# by Sean Nedd
+# improved by Nathan Gallup
+echo "TURBOMOLE program"
+echo "This TURBOMOLE script is an interactive guide for the setup and running of TURBOMOLE calculations on a cluster or a single node."
+
+echo "Running on a cluster?[Y/n]"
+read cluster
+if [ "$cluster" = 'Y' -o "$cluster" = 'y' -o "$cluster" = '' ]; then
+ nodes=8
+ tyme=24
+ iteration=0
+ echo "How many nodes?[Default 8]"
+ read nodes
+ if [ "$nodes" = '' ]; then nodes=8; fi
+ echo "How much time (in hours)?[Default 24]"
+ read tyme
+ if [ "$tyme" = '' ]; then tyme=24; fi
+ if [ -f "script.sh" ]; then
+ echo "Using \"script.sh\" in the present directory."
+ else
+  echo "Is this an optimization?[y/N]"
+  read check
+  if [ "$check" = 'n' -o "$check" = 'N' -o "$check" = '' ]; then
+   echo "ridft>>ridft.out">> script.sh
+   chmod +x script.sh
+  else
+   if [ "$check" = 'y' -o "$check" = 'Y' ]; then
+   echo "Adding \"jobex -c 500 -ri -energy 7 -gcart 4 -gexp 2\" to script.sh"
+   echo "jobex -c 500 -ri -energy 7 -gcart 4 -gexp 2">> script.sh
+   echo "Change script.sh information as necessary, then re-run \"turbo\""
+   chmod +x script.sh
+   fi
+  fi
+ fi  
+adddisp3.sh
+# Personal additions
+ echo "Enter job name as you'd want it to appear in the Hoffman queue [Default script.sh]"
+ read name
+ if [ "$name" = '' ]; then name="script.sh"; fi
+#
+ echo "Submit job?[Y/n]"
+ read submit
+ if [ "$submit" = 'Y' -o "$submit" = 'y' -o "$submit" = '' ]; then
+  echo "Running: runturbomole2.sh -sub -t $tyme -N $nodes script.sh" 
+  runturbomole2.sh -sub -t $tyme -N $nodes -a $name script.sh 
+ else
+  if [ "$submit" = 'n' ]; then exit; fi
+ fi
+else
+ if [ "$cluster" = 'n' ]; then
+ echo "Submit job?[Y/n]"
+ read submit
+ if [ "$submit" = 'Y' -o "$submit" = 'y' -o "$submit" = '' ]; then
+  echo "Running: runturbomole2.sh -sub -t $tyme -N 1 -a $name script.sh" 
+  runturbomole2.sh -sub -t $tyme -N 1 -a $name script.sh
+ else
+  if [ "$submit" = 'n' ]; then exit; fi
+ fi
+ fi
+fi
+exit

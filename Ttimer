@@ -1,0 +1,46 @@
+#!/bin/bash
+TMtimer() {
+if [ -f environment ]; then rm environment; fi
+printenv > environment
+Hscratchdir=$TURBOTMPDIR
+Horigindir=$SGE_CWD_PATH
+
+time_requested=`cat time_requested`
+time_to_quit=$(($time_requested-1))\h
+
+sleep $time_to_quit;
+if [ -s "$Hscratchdir/GEO_OPT_RUNNING" ]; then
+ echo "Approaching max run time and kill moment, need to collect data before data gets Robinson Crusoed."
+ echo "Making a STOP file to exit Turbomole"
+ touch $Hscratchdir/stop
+ touch $Horigindir/pleaseResubmit
+ currentstep=jobex
+elif [ -s "$Hscratchdir/numforce" ]; then
+ echo "Approaching max run time and kill moment, need to collect data before data gets Robinson Crusoed."
+ echo "Making a STOP file to exit Turbomole"
+ touch $Hscratchdir/numforce/stop
+ touch $Horigindir/pleaseResubmit
+ currentstep=numforce
+fi
+
+if [[ "$currentstep" == "numforce" ]]; then
+ while [ -f "$Hscratchdir/numforce/stop" ]; do
+  : #This while loop will make it wait until Turbomole has successfully stopped the run
+ done
+
+ sleep 30
+ kill $1 #This is the process id of the other script that was submitted to Hoffman.
+         #Having found the "pleaseResubmit" file, it should just be sleeping waiting to be killed by this
+
+elif [[ "$currentstep" == "jobex" ]]; then
+ while [ -f "$Hscratchdir/stop" ]; do
+  :
+ done
+
+ sleep 30
+ kill $1
+fi
+
+}
+
+TMtimer $1 &

@@ -1,0 +1,157 @@
+#!/bin/bash
+#$1 should be destination file (no csv needed that will be appended in script
+
+if [ -e temp2 ]
+then
+echo "please get rid of that temp2 file I want to store some stuff there"
+else
+
+#Counter for files starts at 0 ends with maxCOUNTER (number of lines in file)
+COUNTER=1
+
+#the below checks first to see if there are any .out or .log files before it tries to grab them. This just here to reduce amount of errors that wouldn't mean anything
+for file in ./*.out
+do
+    if [ -e "${file}" ]; then
+    ls *.out >> temp2
+    break
+    fi
+done
+
+for file in ./*.log
+do
+    if [ -e "${file}" ]; then
+    ls *.log >> temp2
+    break
+    fi
+done
+
+#number of lines in file
+maxCOUNTER=`wc -l "temp2" | awk '{print $1}'`
+
+#at this point we have a list of all the files we need to grep in $temp2 and how many there are in $maxCOUNTER
+
+cat temp2 | awk -F. '{print $1}' >> tempNames #This gives us the names of our files w/o extension, it is cleaner to include this in our spreadsheet but otherwise will not be used
+
+while [ "$COUNTER" -le "$maxCOUNTER" ] #Here we start our loop which goes through each of the file names one by ones, and collects all information in this loop
+do
+var=`cat temp2 | head -n $COUNTER | tail -n 1` #This is the actual file name of the file we're looking at in the current loop
+var2=`cat $var | tail -1 | awk -F" " '{print $1}'` #The last line of a successful log file in gaussian starts with "Normal termination..." so hopefully this variable is "Normal"
+
+
+if [ -z $var2 ] #If the last line of the file is empty, then well there is nothing else we can do...
+then
+
+grep -A 1 "\-\-\-\-\-\-\-\-\-\-\-" $var | grep "\#" | head -n +1 >> routecard
+cat routecard | tail -1 | awk -F" " '{print $2}' >> theory
+echo "null" >> tempSCF1
+echo "null" >> tempSCF2
+echo "null" >> tempCCSD
+echo "null" >> tempG
+echo "null" >> tempH
+echo "null" >> tempH0
+echo "null" >> tempZPE
+echo "null" >> tempF
+echo "null" >> tempC1
+echo "null" >> tempC2
+echo "null" >> tempC3
+echo "null" >> tempC4
+
+
+elif [ $var2 == Normal ]
+then
+#this is great! the gaussian run completed normally, so we should have everything we need in the log file. but what kind of log file is it?
+
+grep "CCSD(T)" $var | head -n +1 | awk -F" " '{print $2}' | sed 's/D/E/g' >> temp3
+grep -A 1 "\-\-\-\-\-\-\-\-\-\-\-" $var | grep "\#" | head -n +1 >> routecard #This I THINK will isolate us the route card. for now I'll just print the thing straight to the Energies.csv file although in the future I might expand on this more
+cat routecard | tail -1 | awk -F" " '{print $2}' >> theory
+theory=`cat theory | tail -1`
+mp2check=`echo ${theory:0:3}`
+
+grep "SCF Done" $var | tail -1 | awk -F" " '{print $5}' >> tempSCF2
+grep "SCF Done" $var | tail -1 | awk -F" " '{print $3}' >> tempSCF1
+
+tempfreq=`grep "Sum of electronic and thermal Free" $var | tail -1 | awk '{print $8}'` #test to see if it includes a frequency calculation
+
+if [ -s temp3 ]
+then
+#nice, so this is a ccsd run. I'm going to assume that it is single point and just print the energy straight
+
+unset tempfreq
+
+cat temp3 >> tempCCSD
+echo "null" >> tempMP2
+echo "null" >> tempG
+echo "null" >> tempH
+echo "null" >> tempH0
+echo "null" >> tempZPE
+echo "null" >> tempF
+echo "null" >> tempC1
+echo "null" >> tempC2
+echo "null" >> tempC3
+echo "null" >> tempC4
+
+rm temp3
+
+else #oops! this is a bandaid. need to later fix this to detect freq vs non-freq runs
+
+if [ $mp2check == mp2 ]
+then
+#So this is an MP2 run, the SCF done energy only includes the HF energy not the MP2 correction, so let's make sure to grab the MP2 energy because that's probably what we want if we requested mp2...
+grep "EUMP2" $var | tail -1 | awk -F" " '{print $6}' | sed 's/D/E/g' >> tempMP2
+else
+
+echo "no mp2 run detected"
+echo "NA" >> tempMP2
+fi
+
+unset tempfreq
+
+echo "NA" >> tempCCSD
+grep "Sum of electronic and thermal Free" $var | tail -1 | awk '{print $8}' >> tempG
+grep "Sum of electronic and thermal Enthalpies" $var | tail -1 | awk '{print $7}' >> tempH
+grep "Sum of electronic and zero-point" $var | tail -1 | awk '{print $7}' >> tempH0
+grep "Zero-point correction" $var | tail -1 | awk '{print $3}' >> tempZPE
+checkgausslog $var >> tempp
+cat tempp | head -n +1 >> tempF
+cat tempp | head -n +2 | tail -n +2 >> tempC1
+cat tempp | head -n +3 | tail -n +3 >> tempC2
+cat tempp | head -n +4 | tail -n +4 >> tempC3
+cat tempp | head -n +5 | tail -n +5 >> tempC4
+rm tempp
+
+fi
+fi
+COUNTER=$(($COUNTER+1))
+
+echo `pwd` >> temp4
+echo `date` >> temp5
+
+
+done
+
+echo "Location,File,date,CCSD,SCF Done,Energy,MP2 Energy,ZPE,H_0,H,G,Imaginary,converge,converge,converge,converge,theory" >> ~/Dropbox/syncThis/Energies.csv
+paste -d","  temp4 temp2 temp5 tempCCSD tempSCF1 tempSCF2 tempMP2 tempZPE tempH0 tempH tempG tempF tempC1 tempC2 tempC3 tempC4 theory >> ~/Dropbox/syncThis/Energies.csv
+
+echo "energies saved in Energies.csv in syncThis folder"
+rm temp2
+rm temp4
+rm temp5
+rm tempNames
+rm tempG
+rm tempH
+rm tempH0
+rm tempZPE
+rm tempF
+rm tempC1
+rm tempC2
+rm tempC3
+rm tempC4
+rm tempCCSD
+rm routecard
+rm tempSCF1
+rm tempSCF2
+rm theory
+rm tempMP2
+#the above ends the first if checking if there are any temp files already there
+fi

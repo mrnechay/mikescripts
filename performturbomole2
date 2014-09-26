@@ -1,0 +1,350 @@
+
+#!/bin/bash
+# takes a structure file (i.e. pdb, xyz, coord, mol2) and sets up a turbomole run with the input files of the same
+# name and .mtm extension. If that mtm file doesn't exist, it will create a default example file for user to
+# adjust before running again
+# $1 is input file
+# $2 is a flag to run right away. for when you're confident it will set up properly
+
+
+IFS=',' read -a fvalues <<< "$basisset"
+IFS=',' read -a fvalues <<< "$functional"
+IFS=',' read -a fvalues <<< "$cosmo"
+IFS=',' read -a fvalues <<< "$dielectricconstant"
+
+
+
+filename=`echo $1 | awk -F"." '{print $1}'`
+filetype=`echo $1 | awk -F"." '{print $NF}'`
+
+if [[ $filename == coord ]]
+then
+filename=`pwd | awk -F"/" '{print $NF}' | awk -F"_" '{print $1}'`
+fi
+
+if [ -a $filename.mtm ]
+then
+chmod +x $filename.mtm
+source $filename.mtm
+else
+cp ~/mikescripts/default.mtm ./$filename.mtm
+echo "please see the default input $filename.mtm, adjust to your liking and submit again"
+exit 0
+fi
+
+if [ -d $filename\_$type ]; then rm -r $filename\_$type; fi
+mkdir $filename\_$type
+
+if [ $1 == coord ]
+then
+cp coord $filename\_$type/
+elif [ $filetype == xyz ]
+then
+x2t $1 > $filename\_$type/coord
+elif [ $filetype == pdb ]
+then
+babel -ipdb $1 -oxyz $filename.xyz
+x2t $filename.xyz > $filename\_$type/coord
+rm $filename.xyz
+elif [ $filetype == mol2 ]
+then
+babel -imol2 $1 -oxyz $filename.xyz
+x2t $filename.xyz > $filename\_$type/coord
+rm $filename.xyz
+fi
+
+# lets deal with some missing variables here
+
+if [ -z "$ricore" ]
+then
+ricore=500
+fi
+
+# get rid of frozen coordinates 
+sed -i 's/      f//g' $filename\_$type/coord
+sed -i 's/     f/qwertf/g' $filename\_$type/coord
+sed -i 's/ f//g' $filename\_$type/coord
+sed -i 's/qwertf/     f/g' $filename\_$type/coord
+# end get rid of frozen coordinates
+
+# This section will freeze atoms if it says so in mtm file
+
+IFS=',' read -a fvalues <<< "$freeze"
+
+for ii in ${fvalues[@]}
+do
+sed -i $((ii+1))'s/$/ f/' $filename\_$type/coord
+done
+
+# End freezing section
+
+
+
+
+
+if [ -z $multiplicity ]
+then
+mult=s
+elif [[ $multiplicity == 1 ]]
+then
+mult=s
+elif [[ $multiplicity == 3 ]]
+then
+mult=t
+elif [[ $multiplicity == 5 ]]
+then
+mult='u\ 4'
+elif [[ $multiplicity == 7 ]]
+then
+mult='u\ 6'
+fi
+
+if [[ $multiplicity == 2 ]]
+then
+mult='u\ 1'
+elif [[ $multiplicity == 4 ]]
+then
+mult='u\ 3'
+elif [[ $multiplicity == 6 ]]
+then
+mult='u\ 5'
+fi 
+
+cd $filename\_$type
+
+if [ -a qdefine.sh ]; then rm qdefine.sh; fi
+
+echo "echo -e \"\n\na coord\ndesy\n*\nno\nb all BASISSET\n\n" > qdefine.sh
+sed -i "s/BASISSET/$basisset/g" qdefine.sh
+
+number=`egrep " k| ca| sc| ti| v| cr| mn| fe| co| ni| cu| zn| rb| sr| y| zr| nb| mo| tc| ru| rh| pd| ag| cd| cs| ba| lu| hf| ta| w| re| os| ir| pt| au| hg" coord | awk -F" " '{print $4}' | wc -l`
+
+# below contains a while loop that goes through each metal and assigns the basis set desired
+x=1 #initialize counter
+while [ $x -le $number ]
+do
+metal=`egrep " k| ca| sc| ti| v| cr| mn| fe| co| ni| cu| zn| rb| sr| y| zr| nb| mo| tc| ru| rh| pd| ag| cd| cs| ba| lu| hf| ta| w| re| os| ir| pt| au| hg" coord | awk -F" " '{print $4}' | head -n +$x | tail -1`
+sed -i '${s/$/b \\"qwerty\\" METALBASISSET\\n/}' qdefine.sh
+sed -i "s/qwerty/$metal/g" qdefine.sh
+sed -i "s/METALBASISSET/$metalbasisset/g" qdefine.sh
+x=$(( $x + 1 ))
+done
+# concludes metal basis set setup
+
+sed -i '${s/$/*\\neht\\n\\n\\nCHARGE\\nn\\nMULT\\n*\\n\\nscf\\niter\\n500\\n\\nNBOdft\\nfunc\\nFUNCTIONAL\\non\\nq\\nri\\nm\\nRICORE\\non\\n\\nMARIJq\\nq\\n" | define > defineoutput/}' qdefine.sh
+sed -i "s/CHARGE/$charge/g" qdefine.sh
+sed -i "s/MULT/$mult/g" qdefine.sh
+sed -i "s/FUNCTIONAL/$functional/g" qdefine.sh
+sed -i "s/RICORE/$ricore/g" qdefine.sh
+
+if [[ $nbo == y ]]
+then
+sed -i 's/NBO/prop\\npop\\ny\\nnbo\\n*\\n*\\n/g' qdefine.sh
+else
+sed -i "s/NBO//g" qdefine.sh
+fi
+
+if [[ $marij == y ]]
+then
+sed -i 's/MARIJ/marij\\n\\n/g' qdefine.sh
+else
+sed -i 's/MARIJ//g' qdefine.sh
+fi
+
+
+if [[ $metalbasisset == *-cc-* ]]
+then
+# below contains a while loop that goes through each metal and assigns another basis set for ri because this one apparently doesn't exist for the metal
+x=1 #initialize counter
+while [ $x -le $number ]
+do
+metal=`egrep " k| ca| sc| ti| v| cr| mn| fe| co| ni| cu| zn| rb| sr| y| zr| nb| mo| tc| ru| rh| pd| ag| cd| cs| ba| lu| hf| ta| w| re| os| ir| pt| au| hg" coord | awk -F" " '{print $4}' | head -n +$x | tail -1`
+sed -i '${s/ri\\n/ri\\njbas\\n\\nb \\"qwerty\\" def2-TZVPP\\n*\\n/}' qdefine.sh
+sed -i "s/qwerty/$metal/g" qdefine.sh
+x=$(( $x + 1 ))
+done
+# concludes metal basis set setup
+fi
+
+
+
+if [[ $type == ts ]]
+then
+sed -i 's/dft/stp\\nitvc\\nITVC\\n\\ndft/g' qdefine.sh
+sed -i "s/ITVC/$itvc/g" qdefine.sh
+fi
+
+cat qdefine.sh | sed 's/eht\\n\\n\\n/eht\\n\\n/g' >> qdefine.sh
+
+
+chmod +x qdefine.sh
+cp qdefine.sh ../
+
+eval $( cat ../qdefine.sh | head -n +1 )
+scf=`grep scfiterlimit control | awk -F" " '{print $NF}'`
+if [ $scf != 500 ]
+then
+rmall coord
+eval $( cat ../qdefine.sh | tail -1 ) 
+scf=`grep scfiterlimit control | awk -F" " '{print $NF}'`
+if [ $scf != 500 ] 
+then
+echo "the define script is not working. Sorry, please check it out."
+exit 0
+fi  
+fi
+
+mv ../qdefine.sh ./
+
+if [[ $cosmo == y ]]
+then
+echo "echo -e \"$dielectricconstant\n\n\n\n\n\n\n\nr all b\n" > qcosmo.sh
+
+number=`egrep " k| ca| sc| ti| v| cr| mn| fe| co| ni| cu| zn| rb| sr| y| zr| nb| mo| tc| ru| rh| pd| ag| cd| cs| ba| lu| hf| ta| w| re| os| ir| pt| au| hg" coord | awk -F" " '{print $4}' | wc -l`
+metal=`egrep " k| ca| sc| ti| v| cr| mn| fe| co| ni| cu| zn| rb| sr| y| zr| nb| mo| tc| ru| rh| pd| ag| cd| cs| ba| lu| hf| ta| w| re| os| ir| pt| au| hg" coord | awk -F" " '{print $4}'`
+x=1
+while [ $x -le $number ]
+do
+metal=`egrep " k| ca| sc| ti| v| cr| mn| fe| co| ni| cu| zn| rb| sr| y| zr| nb| mo| tc| ru| rh| pd| ag| cd| cs| ba| lu| hf| ta| w| re| os| ir| pt| au| hg" coord | awk -F" " '{print $4}' | head -n +$x | tail -1`
+
+if [[ $metal == zn ]]
+then
+sed -i '${s/$/r \\"qwerty\\" 1.626\\n/}' qcosmo.sh
+sed -i s/qwerty/$metal/g qcosmo.sh
+else
+sed -i '${s/$/r \\"qwerty\\" 2.200\\n/}' qcosmo.sh
+sed -i s/qwerty/$metal/g qcosmo.sh
+fi
+x=$(( $x + 1 ))
+done
+
+sed -i '${s/$/\*\\n\\n" | cosmoprep > cosmooutput/}' qcosmo.sh
+
+chmod +x qcosmo.sh
+eval qcosmo.sh
+
+fi
+
+sed -i '/\$dft/i \\$disp3' control
+sed -i 's/\$scforbitalshift  closedshell.*/\$scforbitalshift automatic 0.1/g' control
+sed -i '/\$scfconv/d' control
+sed -i '/\$scfdamp/d' control
+sed -i '/\$scfiterlimit/a \\$scfdamp   start=4.700  step=0.050  min=0.100' control
+sed -i '/\$scfiterlimit/a \\$scfconv   5' control
+
+if [ -a script.sh ]; then rm script.sh; fi
+
+if [[ $type == ts ]]
+then
+echo "ridft >> ridft.out" > script.sh
+if [[ $loosenconvergencecriteria == y ]]
+then
+echo "jobex -c 500 -ri -energy 5 -gcart 2 -statpt -trans" >> script.sh
+else
+echo "jobex -c 500 -ri -energy 7 -gcart 4 -statpt -trans" >> script.sh
+fi
+chmod +x script.sh
+elif [[ $type == opt ]]
+then
+echo "ridft >> ridft.out" > script.sh
+if [[ $loosenconvergencecriteria == y ]]
+then
+echo "jobex -c 500 -ri -energy 4 -gcart 2 -gexp 2" >> script.sh
+else
+echo "jobex -c 500 -ri -energy 5 -gcart 2 -gexp 2" >> script.sh
+fi
+chmod +x script.sh
+elif [[ $type == sp ]]
+then
+echo "ridft >> ridft.out " > script.sh
+chmod +x script.sh
+elif [[ $type == force ]]
+then
+echo "ridft >> ridft.out" > script.sh
+echo "aoforce >> force.out" >> script.sh
+chmod +x script.sh
+elif [[ $type == optforce ]]
+then
+echo "ridft >> ridft.out" > script.sh
+if [[ $loosenconvergencecriteria == y ]]
+then
+echo "jobex -c 500 -ri -energy 4 -gcart 2 -gexp 2" >> script.sh
+else
+echo "jobex -c 500 -ri -energy 5 -gcart 2 -gexp 2" >> script.sh
+fi
+echo "aoforce >> force.out" >> script.sh
+chmod +x script.sh
+elif [[ $type == optNumForce ]]
+then
+echo "ridft >> ridft.out" > script.sh
+echo "jobex -c 500 -ri -energy 5 -gcart 2 -statpt -trans" >> script.sh
+echo "NumForce -ri -level $functional -central" >> script.sh
+chmod +x script.sh
+fi
+
+# let's modify the control file if desired
+
+if [[ $troublesomeTSsearch == y ]]
+then
+sed -i 's/.*itrvec.*/&\n   hssfreq     8\n   radmax     3.0E-02\n   tradius    3.0E-02/g' control
+else
+sed -i 's/.*itrvec.*/&\n   tradius    0.20/g' control
+fi
+
+if [[ $rpacor ]]
+then
+sed -i 's/$end/$rpacor     RPACOR\n&/g' control
+sed -i "s/RPACOR/$rpacor/g" control
+fi
+
+if [[ $maxcor ]]
+then
+sed -i 's/$end/$maxcor     MAXCOR\n&/g' control
+sed -i "s/MAXCOR/$maxcor/g" control
+fi
+
+#end control file manipulation
+
+IFS=',' read -a Nvalues <<< "$slots"
+
+if [ "${#Nvalues[@]}" -gt "1" ]
+then
+for ii in ${Nvalues[@]}
+do
+mkdir $ii\cores
+cp * $ii\cores/ 2>&1 | grep -v 'omitting directory'
+cd $ii\cores
+if [[ $2 ]]
+then
+scf=`grep scfiterlimit control | awk -F" " '{print $NF}'`
+if [ $scf == 500 ]
+then
+if [ $exclusive == y ]
+then
+runturbomole.exclusive.sh -sub -N $ii -t $time script.sh
+else
+runturbomole.sh -sub -N $ii -t $time script.sh
+fi
+fi
+fi
+cd ..
+done
+else
+if [[ $2 ]]
+then
+scf=`grep scfiterlimit control | awk -F" " '{print $NF}'`
+if [ $scf == 500 ]
+then
+if [[ $exclusive == n ]]
+then
+runturbomole.sh -sub -N $Nvalues -t $time script.sh
+else
+runturbomole.exclusive.sh -sub -N $Nvalues -t $time script.sh
+fi
+fi
+fi
+fi
+
+cd ..
+
+

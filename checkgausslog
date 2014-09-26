@@ -1,0 +1,126 @@
+#!/bin/bash
+# Shows first line of frequencies in Gaussian input. $1 should be full log file like run.log
+
+unset varr
+varr=`echo $1 | awk -F"." '{print $2}'`
+
+if [ -z $varr ]
+then
+
+if [ -e "$1.out" ]
+then
+
+temp=`grep "Frequencies" $1.out | head -n +1 | awk -F" " '{print $3}'`
+
+if [ -z $temp ]
+then
+echo "No Frequencies"
+else
+
+isneg=`echo ${temp:0:1}`
+
+if [ $isneg != - ]
+then
+	echo "No imaginary frequencies!"
+elif [ $temp == - ]
+then
+	echo "At least one imaginary frequency found"
+else
+	echo "When I tried to grep for frequencies I did not get a number, check output file manually and sorry if I just missed it somehow"
+fi
+
+fi
+
+grep -B 6 "Stationary point found" $1.out | awk -F" " '{print $5}' | head -n +4 >> temporary1
+if [ -s temporary1 ]
+then
+cat temporary1
+cat $1.out | tail -1
+else
+echo "Not" 
+echo "an"
+echo "opt"
+echo "run"
+cat $1.out | tail -1
+fi
+rm temporary1
+
+elif [ -e "$1.log" ]
+then
+
+temp=`grep "Frequencies" $1.log | head -n +1 | awk -F" " '{print $3}'`
+
+if [ -z $temp ]
+then
+echo "No Frequencies"
+else
+
+isneg=`echo ${temp:0:1}`
+
+if [ $isneg != - ]
+then
+        echo "No imaginary frequencies!"
+elif [ $isneg == - ]
+then
+        echo "At least one imaginary frequency found"
+else
+        echo "When I tried to grep for frequencies I did not get a number, check output file manually and sorry if I just missed it somehow"
+fi
+fi
+
+grep -B 6 "Stationary point found" $1.log | awk -F" " '{print $5}' | head -n +4 >> temporary1
+if [ -s temporary1 ]
+then
+cat temporary1
+cat $1.log | tail -1
+else
+echo "Not"
+echo "an"
+echo "opt"
+echo "run"
+cat $1.log | tail -1
+fi
+rm temporary1
+
+else
+echo "log file doesn't seem to exist, or at least doesn't have extension .log or .out"
+fi
+
+else
+
+temp=`grep "Frequencies" $1 | head -n +1 | awk -F" " '{print $3}'`
+
+if [ -z $temp ]
+then
+echo "No Frequencies"
+else 
+
+isneg=`echo ${temp:0:1}`
+
+if [ $isneg != - ]
+then
+        echo "No imaginary frequencies!"
+elif [ $isneg == - ]
+then
+        echo "At least one imaginary frequency found"
+else
+        echo "When I tried to grep for frequencies I did not get a number, check output file manually and sorry if I just missed it somehow"
+fi
+
+fi
+
+grep -B 6 "Stationary point found" $1 | awk -F" " '{print $5}' | head -n +4 >> temporary1
+if [ -s temporary1 ]
+then
+cat temporary1
+cat $1 | tail -1
+else
+echo "Not" 
+echo "an"
+echo "opt"
+echo "run"
+cat $1 | tail -1
+fi
+rm temporary1
+
+fi

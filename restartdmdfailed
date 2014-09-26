@@ -1,0 +1,31 @@
+#!/bin/bash
+
+
+if [ -a tempqstat ]; then rm tempqstat; fi
+qstat -r -u mnechay > tempqstat
+
+for ii in `echo */ | sed s:/::g`
+do
+if [ -a $ii/new.pdb ]
+then
+isthisrunning=`cat tempqstat | grep $ii`
+
+if [[ -z $isthisrunning ]]
+then
+# if it gets to this point it is a qmdmd folder and is not running
+
+numbertocompare=`echo $ii/Iteration*/ | sed "s:/:\n:g" | awk -F"_" '{print $NF}' | sort -n | tail -1`
+numbertocomparetwo=`cat $ii/qm_opt_energies.dat | tail -1 | awk -F" " '{print $1}'`
+
+if [[ $(($numbertocomparetwo + 1)) == $numbertocompare ]]
+then
+cd $ii
+runstepnew.sh -sub -N 4 -t 24 $numbertocompare $numbertocompare > /dev/null
+echo "$ii submitted"
+cd ..
+else
+echo "$ii is not running but it doesn't seem like because DMD failed"
+fi
+fi
+fi
+done

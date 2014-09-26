@@ -1,0 +1,38 @@
+#!/bin/bash
+
+if [ -a mastermetalreslist ]; then rm mastermetalreslist; fi
+if [ -a mastersubreslist ]; then rm mastersubreslist; fi
+
+readarray -t subs < <(cat topparam.list | awk -F" " '{print $2}')
+
+for jj in `echo Iteration_*/ | sed s:/::g | sed s/Iteration_0//g`
+do
+
+if [ -a $jj/to_next_iteration.pdb ]
+then
+
+if [ -a metalreslist ]; then rm metalreslist; fi
+if [ -a subreslist ]; then rm subreslist; fi
+
+for ii in "${subs[@]}"
+do
+
+if [[ "$ii" != "SUB" ]]
+then
+measurepdb $jj/to_next_iteration.pdb $ii 3 | sort -n -k11 | awk '!_[$1]++' | awk -F" " '{print $1,$11,$12}' > metalreslist
+paste <(cat metalreslist) <(yes $jj | head -n +`cat metalreslist | wc -l`) >> mastermetalreslist
+metalreslist=`cat metalreslist | awk -F" " '{print $1}' | tr '\n' '|' | sed -e s/\|$//g`
+else
+measurepdb $jj/to_next_iteration.pdb $ii 4.5 | sort -n -k11 | awk '!_[$1]++' | egrep -v "$metalreslist" | awk -F" " '{print $1,$11,$12}' > subreslist
+paste <(cat subreslist) <(yes $jj | head -n +`cat subreslist | wc -l`) >> mastersubreslist
+fi
+
+done
+
+fi
+
+done
+echo "Metals"
+cat mastermetalreslist | sort -n -k2 | awk '!_[$1]++'
+echo " "
+cat mastersubreslist | sort -n -k2 | awk '!_[$1]++'

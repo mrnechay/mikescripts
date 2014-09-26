@@ -1,0 +1,11 @@
+#!/bin/bash
+#
+# runs script on directories in the present working directory 
+# by Sean Nedd
+#
+
+#echo "\$1 is the source directory from hoffman2 (no slash at end)"
+#echo "\$2 is the destination directory \(no slash at end and mostly uses \".\"\)."
+
+rsync -auvt -e ssh mnechay@hoffman2.idre.ucla.edu:~/mikescripts ~/Dropbox/mikescripts
+rsync -auvt -e ssh mnechay@hoffman2.idre.ucla.edu:~/Dropbox/syncThis ~/Dropbox/syncThis

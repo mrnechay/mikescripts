@@ -1,0 +1,150 @@
+# setupqmdmd.mike foldername HIS422,glu471,HIS426 1 <-- substrate charge
+# $1 is qmdmd folder. $2 should be residue list for qm region. HIS271,glu586,TYR464 #3 metal/substrate charge $4 is the metal/substrate multiplicity.
+# Example call: setupqmdmd.mike Ir_protein_folder HIS271,glu586,TYR464, -1, 1
+
+filename=`echo $1 | awk -F"." '{print $1}'`
+filetype=`echo $1 | awk -F"." '{print $NF}'`
+if [[ $filetype == pdb ]]
+then
+mkdir $filename
+cp $1 $filename
+echo "new qmdmd folder, $filename, created"
+fi
+
+
+if [ $2 ]
+then
+echo "setting up qm region and other input"
+elif [ $filename ]
+then
+dos2unix $filename/$filename.pdb >> qmdmdsetupoutput 2>/dev/null
+if [ -a $filename/topparam.list ]; then rm $filename/topparam.list; fi
+if [ -a $filename/config ]; then rm $filename/config; fi
+echo "fullpathname=`pwd`/$filename/" >> $filename/config
+echo "dmd_path=/u/home/ana/snedd/bin/DMD" >> $filename/config
+if [ -a $filename/config1 ]; then rm $filename/config1; fi
+echo "yourfilename=yay2.pdb" > $filename/config1
+echo "dmd_path=/u/home/ana/snedd/bin/DMD" >> $filename/config1
+if [ -a $filename/yay2.pdb ]; then rm $filename/yay2.pdb; fi
+if [ -a $filename/metals.pdb ]; then rm $filename/metals.pdb; fi
+grep -e "^ATOM" $filename/$filename.pdb | egrep -v "BALA|BCYS|BASP|BGLU|BPHE|BGLY|BHIS|BILE|BLYS|BLEU|BMET|BASN|BPRO|BGLN|BARG|BSER|BTHR|BVAL|BTRP|BTYR" >> $filename/yay2.pdb
+echo "TER" >> $filename/yay2.pdb
+egrep -i "HETATM .... IR|HETATM .... ZN|HETATM .... FE|HETATM .... CU|HETATM .... AG" $filename/$filename.pdb > $filename/metals.pdb
+readarray -t METALS < <(cat $filename/metals.pdb | awk -F" " '{print $3}' | tr [a-z] [A-Z])
+readarray -t metals < <(cat $filename/metals.pdb | awk -F" " '{print $3}' | tr [A-Z] [a-z])
+Metals=(${metals[@]^})
+COUNTER=1
+metalcount=`wc -l $filename/metals.pdb | awk -F" " '{print $filename}'`
+while [[ "$COUNTER" -le "$metalcount" ]]
+do
+cat $filename/metals.pdb | head -n +$COUNTER | tail -1 | awk 'length(FNR)==1{print substr($0,1,7), "  "FNR, substr($0,13,length($0))} length(FNR)==2{print substr($0,1,6), "  "FNR, substr($0,13,length($0))}' | head -n +1 | awk 'length($0)>70{$0=substr($0,1,17)"'${METALS[$(($COUNTER-1))]}$COUNTER' B   '$COUNTER'"substr($0,27,length($0))}1' | sed 's/'${METALS[$(($COUNTER-1))]}' *$/Zn/g' | sed 's/'${metals[$(($COUNTER-1))]}' *$/Zn/g' | sed 's/'${Metals[$(($COUNTER-1))]}' *$/Zn/g' >> $filename/yay2.pdb
+if [ -a $filename/metal$COUNTER.pdb ]; then rm $filename/metal$COUNTER.pdb; fi
+cat $filename/metals.pdb | head -n +$COUNTER | tail -1 | awk 'length(FNR)==1{print substr($0,1,7), "  "FNR, substr($0,13,length($0))} length(FNR)==2{print substr($0,1,6), "  "FNR, substr($0,13,length($0))}' | head -n +1 | awk 'length($0)>70{$0=substr($0,1,17)"'${METALS[$(($COUNTER-1))]}$COUNTER' B   '$COUNTER'"substr($0,27,length($0))}1' | sed 's/'${METALS[$(($COUNTER-1))]}' *$/Zn/g' | sed 's/'${metals[$(($COUNTER-1))]}' *$/Zn/g' | sed 's/'${Metals[$(($COUNTER-1))]}' *$/Zn/g' >> $filename/metal$COUNTER.pdb
+babel -i pdb $filename/metal$COUNTER.pdb -o mol2 $filename/metal$COUNTER.mol2 >> qmdmdsetupoutput
+echo 'MOL     '${METALS[$(($COUNTER-1))]}$COUNTER'     ./metal'$COUNTER'.mol2' >> $filename/topparam.list
+echo "TER" >> $filename/yay2.pdb
+COUNTER=$(($COUNTER + 1))
+done
+if [ -a $filename/sub.pdb ]; then rm $filename/sub.pdb; fi
+egrep -v " IR | FE | CU | ZN | AG " $filename/$filename.pdb | egrep "^HETATM" $filename/$filename.pdb | awk 'length(FNR)==1{print substr($0,1,7), "  "FNR, substr($0,13,length($0))} length(FNR)==2{print substr($0,1,6), "  "FNR, substr($0,13,length($0))}' | tail -n +2 | awk 'length($0)>70{$0=substr($0,1,17)"SUB B   '$COUNTER'"substr($0,27,length($0))}1' >> $filename/sub.pdb
+if [ -s $filename/sub.pdb ]; then
+cd $filename
+( tac sub.pdb ; printf " \n \n \n \n \n \n \n \n \n" ) | tac | nl | awk 'length($0)>20{$0=substr($0,1,21)""substr($filename,1,3)""substr($0,24,length($0))}1' | cut -f 2- | grep "HETATM" > _sub.pdb
+mv _sub.pdb sub.pdb
+cd ..
+cat $filename/sub.pdb >> $filename/yay2.pdb
+# egrep -v " IR | FE | CU | ZN | AG " $filename/$filename.pdb | egrep "^HETATM" $filename/$filename.pdb | awk 'length(FNR)==1{print substr($0,1,7), "  "FNR, substr($0,13,length($0))} length(FNR)==2{print substr($0,1,6), "  "FNR, substr($0,13,length($0))}' | tail -n +2 | awk 'length($0)>70{$0=substr($0,1,17)"SUB B   '$COUNTER'"substr($0,27,length($0))}1' >> $filename/yay2.pdb
+babel -i pdb $filename/sub.pdb -o mol2 $filename/sub.mol2 >> qmdmdsetupoutput
+sed -i 's/ H / Eh/g' $filename/sub.mol2
+cd $filename
+pdbPOLARHs sub.pdb > IDpolarH.sh 2>/dev/null
+chmod +x IDpolarH.sh
+./IDpolarH.sh
+cd ..
+echo "TER" >> $filename/yay2.pdb
+echo "MOL     SUB     ./sub.mol2" >> $filename/topparam.list
+else
+if [ -a $filename/sub.pdb ]; then rm $filename/sub.pdb; fi
+fi
+echo "ENDMDL" >> $filename/yay2.pdb
+cp $filename/yay2.pdb $filename/initial.pdb
+cp $filename/initial.pdb $filename/initial.orig.pdb
+cd $filename
+pdb_to_pdbDMD.sh initial.pdb new.pdb
+echo "run command again with the QM residues and substrate/metal charge labelled"
+echo "chimera $filename/new.pdb"
+pwd > pwd
+echo "scp mnechay@hoffman2.idre.ucla.edu:`cat pwd`/new.pdb ./"
+rm pwd
+cd ..
+else
+echo "1 should be your qmdmd folder"
+fi
+if [ $2 ]
+then
+cd $filename
+if [ -a inConstr ]; then rm inConstr; fi
+if [ -a genESC.output ]; then rm genESC.output; fi
+genESC.linux  ~snedd/bin/DMD/parameter/ new.pdb topparam.list  >> inConstr 2>genESC.output
+if [ -a $filename/input ]; then rm $filename/input; fi
+genQMDMDparameters $2
+extract_qm.sh new.pdb x.pdb >> step2.output
+chimera_addh.sh x.pdb h.pdb >> step2.output
+cd ..
+if [ -a $filename/Spec1.sh ]; then rm $filename/Spec1.sh; fi
+if [ -a $filename/Spec2.sh ]; then rm $filename/Spec2.sh; fi
+readarray -t METALS < <(cat $filename/metals.pdb | awk -F" " '{print $3}' | tr [a-z] [A-Z])
+readarray -t metals < <(cat $filename/metals.pdb | awk -F" " '{print $3}' | tr [A-Z] [a-z])
+Metals=(${metals[@]^})
+echo "sed s/Zn/${Metals[0]}/ < \$filename > _tmp" > $filename/Spec1.sh
+echo "mv _tmp \$filename" >> $filename/Spec1.sh
+echo "sed s/${Metals[0]}/Zn/ < \$filename > _tmp" > $filename/Spec2.sh
+echo "mv _tmp \$filename" >> $filename/Spec2.sh
+chmod +x $filename/Spec1.sh
+chmod +x $filename/Spec2.sh
+cd $filename
+create_coord.sh h.pdb >> step2.output
+cd ..
+mkdir $filename/Template_EO
+cp $filename/coord $filename/Template_EO/
+if [[ $3 == *-* ]]; then
+echo "charge is negative"
+elif [[ $charge == *+* ]]; then
+echo "charge is positive"
+else
+subcharge=`echo +$3`
+fi
+echo $subcharge >> $filename/changecharge
+forbc=`cat $filename/changecharge | tr -d '\n'`
+charge=`echo $forbc | bc`
+echo "charge is $charge" >> $filename/charge
+cd $filename/Template_EO
+if [ -a defineoutput ]; then rm defineoutput; fi
+eval $( quickdefine $charge $4 | head -n +1 )
+scf=`grep scfiterlimit control | awk -F" " '{print $NF}'`
+if [ $scf != 500 ]
+then
+rmall coord
+eval $( quickdefine $charge $4 | tail -1 )
+scf=`grep scfiterlimit control | awk -F" " '{print $NF}'`
+if [ $scf != 500 ]
+then
+echo "the define script is not working. Sorry, please check it out."
+exit 0
+fi
+fi
+sed -i '/\$dft/i \\$disp3' control
+if [ -a run_calc.sh ]; then rm run_calc.sh; fi
+echo "ridft >> ridft.out" > run_calc.sh
+chmod +x run_calc.sh
+cd ..
+if [ -d Template_Opt ]; then rm -r Template_Opt/; fi
+cp -R Template_EO/ Template_Opt/
+cd ./Template_Opt
+rm run_calc.sh
+echo "jobex -c 500 -ri -energy 5 -gcart 2 -gexp 2" > run_calc.sh
+chmod +x run_calc.sh
+cd ../..
+cd $filename
+pdb_to_pdbDMD.sh new.pdb test.pdb
+fi

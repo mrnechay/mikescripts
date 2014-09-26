@@ -1,0 +1,119 @@
+#!/bin/bash
+
+# example input:
+# ts_shotgun 1
+# $1 is vibrational mode to screwer
+
+if [ -d screwereda ]; then echo "oops there are already screwer dir"; exit 0; fi
+if [ -d screweredb ]; then echo "oops there are already screwer dir"; exit 0; fi
+if [ -d screweredc ]; then echo "oops there are already screwer dir"; exit 0; fi
+if [ -d screweredN ]; then echo "oops there are already screwer dir"; exit 0; fi
+if [ -d screweredx ]; then echo "oops there are already screwer dir"; exit 0; fi
+if [ -d screweredy ]; then echo "oops there are already screwer dir"; exit 0; fi
+if [ -d screweredz ]; then echo "oops there are already screwer dir"; exit 0; fi
+
+mkdir screwereda
+mkdir screweredb
+mkdir screweredc
+mkdir screweredN
+mkdir screweredx
+mkdir screweredy
+mkdir screweredz
+
+if [ -a hessian ]
+then
+echo "hessian file detected. I'll take that."
+cp hessian ./screwereda/hessian
+cp hessian ./screweredb/hessian
+cp hessian ./screweredc/hessian
+cp hessian ./screweredN/hessian
+cp hessian ./screweredx/hessian
+cp hessian ./screweredy/hessian
+cp hessian ./screweredz/hessian
+fi
+
+if [ -a screwer.mtm ]
+then
+cp screwer.mtm screwereda/screwereda.mtm
+cp screwer.mtm screweredb/screweredb.mtm
+cp screwer.mtm screweredc/screweredc.mtm
+cp screwer.mtm screweredN/screweredN.mtm
+cp screwer.mtm screweredx/screweredx.mtm
+cp screwer.mtm screweredy/screweredy.mtm
+cp screwer.mtm screweredz/screweredz.mtm
+else
+echo "please make a screwer.mtm file"
+rm -r screwereda
+rm -r screweredb
+rm -r screweredc
+rm -r screweredN
+rm -r screweredx
+rm -r screweredy
+rm -r screweredz
+
+exit 0
+fi
+
+echo '$coord' > screwereda/coord
+echo -e "$1\n3\n" | screwer >> screweroutput
+grep -A 1000 newcoord control | tail -n +3 | head -n -1 >> screwereda/coord
+echo '$user-defined bonds' >> screwereda/coord
+echo '$end' >> screwereda/coord
+
+
+echo '$coord' > screweredb/coord
+echo -e "$1\n10\n" | screwer >> screweroutput
+grep -A 1000 newcoord control | tail -n +3 | head -n -1 >> screweredb/coord
+echo '$user-defined bonds' >> screweredb/coord
+echo '$end' >> screweredb/coord
+
+
+echo '$coord' > screweredc/coord
+echo -e "$1\n30\n" | screwer >> screweroutput
+grep -A 1000 newcoord control | tail -n +3 | head -n -1 >> screweredc/coord
+echo '$user-defined bonds' >> screwereda/coord
+echo '$end' >> screwereda/coord
+
+
+cp coord ./screweredN/coord
+
+
+echo '$coord' > screweredx/coord
+echo -e "$1\n-3\n" | screwer >> screweroutput
+grep -A 1000 newcoord control | tail -n +3 | head -n -1 >> screweredx/coord
+echo '$user-defined bonds' >> screwereda/coord
+echo '$end' >> screwereda/coord
+
+
+echo '$coord' > screweredy/coord
+echo -e "$1\n-10\n" | screwer >> screweroutput
+grep -A 1000 newcoord control | tail -n +3 | head -n -1 >> screweredy/coord
+echo '$user-defined bonds' >> screweredb/coord
+echo '$end' >> screweredb/coord
+
+
+echo '$coord' > screweredz/coord
+echo -e "$1\n-30\n" | screwer >> screweroutput
+grep -A 1000 newcoord control | tail -n +3 | head -n -1 >> screweredz/coord
+echo '$user-defined bonds' >> screwereda/coord
+echo '$end' >> screwereda/coord
+
+
+if [[ "$2" == "yes" ]]
+then
+cd screwereda
+performturbomole coord yes
+cd ../screweredb
+performturbomole coord yes
+cd ../screweredc
+performturbomole coord yes
+cd ../screweredN
+performturbomole coord yes
+cd ../screweredx
+performturbomole coord yes
+cd ../screweredy
+performturbomole coord yes
+cd ../screweredz
+performturbomole coord yes
+cd ..
+fi

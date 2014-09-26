@@ -1,0 +1,103 @@
+#!/bin/bash
+# t2gaussian turbofolder titlecard gen submit
+# takes turbomole run and runs a gaussian calculation on it using the titlecard and gen section which must be in text files
+# this script also only works for singlets so far
+
+unset charge
+
+if [ ! -d gaussian ]
+then
+mkdir gaussian
+fi
+
+if [ -d gaussian/$1\_$2/ ]; then rm -r gaussian/$1\_$2/; fi
+if [ -a gaussian/$1\_$2/.com ]; then rm gaussian/$1\_$2.com; fi
+
+echo "% chk=$1_$2.chk" > gaussian/$1\_$2.com
+echo "% mem=3800MB" >> gaussian/$1\_$2.com
+cat $2 >> gaussian/$1\_$2.com
+echo " " >> gaussian/$1\_$2.com
+
+charge=`grep "<charge>" $1/job.last | awk -F" " '{print $3}' | awk -F"." '{print $1}'`
+
+if [ -z $charge ]
+then
+charge=`grep -A 2 " charge " $1/job.last | tail -1 | awk -F" " '{print $3}' | awk -F"." '{print $1}' | sed s:-0:0:g`
+fi
+multiplicity=1
+
+echo "comment" >> gaussian/$1\_$2.com
+echo " " >> gaussian/$1\_$2.com
+echo "$charge $multiplicity" >> gaussian/$1\_$2.com
+t2x $1/coord | tail -n +3 >> gaussian/$1\_$2.com
+echo " " >> gaussian/$1\_$2.com
+
+# we need to generate gen part if applicable
+
+if [ -n $3 ]
+then
+Iratom=`cat gaussian/$1\_$2.com | egrep '^Ir ' | tail -1 | awk -F" " '{print $1}'`
+Hatom=`cat gaussian/$1\_$2.com | egrep '^H ' | tail -1 | awk -F" " '{print $1}'`
+Catom=`cat gaussian/$1\_$2.com | egrep '^C ' | tail -1 | awk -F" " '{print $1}'`
+Natom=`cat gaussian/$1\_$2.com | egrep '^N ' | tail -1 | awk -F" " '{print $1}'`
+Oatom=`cat gaussian/$1\_$2.com | egrep '^O ' | tail -1 | awk -F" " '{print $1}'`
+Patom=`cat gaussian/$1\_$2.com | egrep '^P ' | tail -1 | awk -F" " '{print $1}'`
+Satom=`cat gaussian/$1\_$2.com | egrep '^S ' | tail -1 | awk -F" " '{print $1}'`
+if [[ $Iratom = Ir ]]
+then
+echo $Iratom
+echo "Ir 0
+QZVP
+****" >> gaussian/$1\_$2.com
+fi
+if [[ $Hatom = H ]]
+then
+echo "H 0
+SVP
+****" >> gaussian/$1\_$2.com
+fi
+if [[ $Catom = C ]]
+then
+echo "C 0
+SVP
+****" >> gaussian/$1\_$2.com
+fi
+if [[ $Natom = N ]]
+then
+echo "N 0
+SVP
+****" >> gaussian/$1\_$2.com
+fi
+if [[ $Oatom = O ]]
+then
+echo "O 0
+SVP
+****" >> gaussian/$1\_$2.com
+fi
+if [[ $Patom = P ]]
+then
+echo "P 0
+SVP
+****" >> gaussian/$1\_$2.com
+fi
+if [[ $Satom = S ]]
+then
+echo "S 0
+SVP
+****" >> gaussian/$1\_$2.com
+fi
+echo " " >> gaussian/$1\_$2.com
+fi
+
+echo "EOF" >> gaussian/$1\_$2.com
+
+cd gaussian
+
+if [ -a gaussoutput ]; then rm gaussoutput; fi
+if [[ $4 = submit ]]
+then
+echo -e "P\n\nB\n$1_$2\n8192\n18\nn\n8\n\n\nQ\n" | gaussian09.q > gaussoutput
+echo "Gaussian job $1 with title card from file $2 was submitted"
+fi
+
+cd ..

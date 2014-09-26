@@ -1,0 +1,15 @@
+if [ -a pehostfile ]; then rm pehostfile; fi
+if [ -a MFILE ]; then rm MFILE; fi
+
+cat $PE_HOSTFILE > pehostfile
+
+linecount=`wc -l < pehostfile`
+
+for ii in `seq $linecount`
+do
+numofcores=`cat pehostfile | head -n +$ii | tail -1 | awk -F" " '{print $2}'`
+for jj in `seq $numofcores`
+do
+cat pehostfile | head -n +$ii | tail -1 | awk -F" " '{print $1}' >> MFILE
+done
+done

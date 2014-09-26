@@ -1,0 +1,69 @@
+#!/bin/bash
+#takes a coord file and makes a turbomole define file using option 1 in line 1 and option 2 in line 2
+# quickdefine charge multiplicity trans
+
+if [ -z $1 ]
+then
+echo "please specify charge as \$1"
+else
+
+if [ -z $2 ]
+then
+mult=s
+elif [[ $2 == 1 ]]
+then
+mult=s
+elif [[ $2 == 3 ]]
+then
+mult=t
+elif [[ $2 == 5 ]]
+then
+mult='u\ 4'
+elif [[ $2 == 7 ]]
+then
+mult='u\ 6'
+elif [[ $2 == 2 ]]
+then
+mult='u\ 1'
+elif [[ $2 == 4 ]]
+then
+mult='u\ 3'
+elif [[ $2 == 6 ]]
+then
+mult='u\ 5'
+fi 
+
+
+if [ -a qdefine.sh ]; then rm qdefine.sh; fi
+
+echo "echo -e \"\n\na coord\ndesy\n*\nno\nb all def2-SVP\n\n\n" > qdefine.sh
+
+number=`egrep " k| ca| sc| ti| v| cr| mn| fe| co| ni| cu| zn| rb| sr| y| zr| nb| mo| tc| ru| rh| pd| ag| cd| cs| ba| lu| hf| ta| w| re| os| ir| pt| au| hg" coord | awk -F" " '{print $4}' | wc -l`
+metal=`egrep " k| ca| sc| ti| v| cr| mn| fe| co| ni| cu| zn| rb| sr| y| zr| nb| mo| tc| ru| rh| pd| ag| cd| cs| ba| lu| hf| ta| w| re| os| ir| pt| au| hg" coord | awk -F" " '{print $4}'`
+x=1
+while [ $x -le $number ]
+do
+metal=`egrep " k| ca| sc| ti| v| cr| mn| fe| co| ni| cu| zn| rb| sr| y| zr| nb| mo| tc| ru| rh| pd| ag| cd| cs| ba| lu| hf| ta| w| re| os| ir| pt| au| hg" coord | awk -F" " '{print $4}' | head -n +$x`
+
+sed -i '${s/$/b \\"qwerty\\" def2-TZVPP\\n/}' qdefine.sh
+sed -i s/qwerty/$metal/g qdefine.sh
+x=$(( $x + 1 ))
+done
+
+sed -i '${s/$/*\\neht\\n\\n\\nCHARGE\\nn\\nMULT\\n*\\n\\nscf\\niter\\n500\\n\\nprop\\npop\\ny\\nnbo\\n*\\n*\\ndft\\nfunc\\ntpss\\non\\nq\\nri\\nm\\n500\\non\\nq\\nq\\n" | define > defineoutput/}' qdefine.sh
+sed -i s/CHARGE/$1/g qdefine.sh
+sed -i "s/MULT/$mult/g" qdefine.sh
+
+if [[ $3 == trans ]]
+then
+sed -i 's/dft/stp\\nitvc\\n1\\n\\ndft/g' qdefine.sh
+fi
+
+cat qdefine.sh | sed 's/eht\\n\\n\\n/eht\\n\\n/g' >> qdefine.sh
+fi
+
+if [ -a qdefine.sh ]; then
+cat qdefine.sh
+rm qdefine.sh
+fi
+

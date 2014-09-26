@@ -1,0 +1,34 @@
+#!/bin/bash
+# sync files $1 is what to sync - files or scripts or all, $2 is option fromHoffman or fromLocal
+
+if [ $2 == fromHoffman ]
+then
+
+if [ $1 == scripts ]
+then
+scp mnechay@hoffman2.idre.ucla.edu:~/mikescripts/* ~/Dropbox/mikescripts/
+
+elif [ $1 == files ]
+then
+scp mnechay@hoffman2.idre.ucla.edu:~/Dropbox/syncThis/* ~/Dropbox/syncThis/
+
+fi
+
+
+
+elif [ $2 == fromLocal ]
+then
+
+
+if [ $1 == scripts ]
+
+then
+scp ~/Dropbox/mikescripts/* mnechay@hoffman2.idre.ucla.edu:~/mikescripts
+
+elif [ $1 == files ]
+then
+scp ~/Dropbox/syncThis/* mnechay@hoffman2.idre.ucla.edu:~/Dropbox/syncThis
+
+fi
+
+fi

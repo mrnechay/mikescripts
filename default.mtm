@@ -1,0 +1,63 @@
+#################################
+#                               #
+#           TURBOMOLE           #
+#         input by mike         #
+#                               #
+#################################
+
+# answer all yes/no with y/n
+#################################
+
+Basic cluster options:
+  slots			= 4
+  time			= 24
+  exclusive		= y
+
+Basic calculation options:
+  type			= opt
+  charge		= 0
+  multiplicity		= 1
+
+# Calculation types available:
+# sp, opt, ts, force, optforce,
+# optNumForce, tsNumForce
+#################################
+
+Level of theory:
+  DFT			= y
+  RI			= y
+  functional            = tpss
+  basis set		= def2-SVP
+  metal basis set	= def2-TZVPP
+
+TS options (ignore if not):
+  itvc			= 1
+  troublesome TS search	= n
+
+Other options to deal with troublesome calculations:
+  loosen convergence criteria	= n
+  weight derivatives		= y
+  gridsize			= m4
+
+# First option reduces energy and gcart convergence threshold
+# TURBOMOLE manual recommends weight derivatives for NumForce runs, also could be helpful for convergence in opt/ts runs
+# default gridsize is m3, 1 is a coarse small grid, 7 is finest. TURBOMOLE manual recommends m4 for clusters of > 50 atoms
+#############################################################################################################################
+
+Memory:
+  ricore		= 500
+  rpacor		= 3000
+  maxcor		= 3000
+
+COSMO:
+  cosmo			= n
+  dielectric constant	= 80
+
+Other options:
+  nbo			= n
+
+other DFT options:
+  marij			= y
+
+Freeze atoms:
+# freeze		= 12,14

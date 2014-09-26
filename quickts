@@ -1,0 +1,182 @@
+#!/bin/bash
+
+# So say I want to do a transition state search on a single structure
+# input should look like:
+# quickts reactant product
+# $1 should be coord file with reactants
+# $2 should be coord file with products
+# $3 should be the input .mtm file
+# it should also be ok if they are pdb, mol2, xyz, etc.
+# If there is only $1 present, should go straight to a ts optimization with that starting guess
+
+filename1=`echo $1 | awk -F"." '{print $1}'`
+filetype1=`echo $1 | awk -F"." '{print $NF}'`
+
+if [[ $filename1 = coord ]]
+then
+filename1=`pwd | awk -F"/" '{print $NF}'`
+fi
+
+echo "$filename1 $filetype1"
+
+if [ -d $filename1\_ts ]; then rm -r $filename1\_ts; fi
+mkdir $filename1\_ts
+
+if [ $1 == coord ]
+then
+cp coord $filename1\_ts/
+elif [ $filetype1 == xyz ]
+then
+x2t $1 > $filename1\_ts/coord
+elif [ $filetype1 == pdb ]
+then
+babel -ipdb $1 -oxyz $filename1.xyz
+x2t $filename1.xyz > $filename1\_ts/coord
+elif [ $filetype1 == mol2 ]
+then
+babel -imol2 $1 -oxyz $filename1.xyz
+x2t $filename1.xyz > $filename1\_ts/coord
+fi
+
+filename2=`echo $2 | awk -F"." '{print $1}'`
+filetype2=`echo $2 | awk -F"." '{print $NF}'`
+echo "$filename2 $filetype2"
+
+if [ -d $filename2\_ts ]; then rm -r $filename2\_ts; fi
+mkdir $filename2\_ts
+
+if [ $2 == coord ]
+then
+cp coord $filename2\_ts/
+elif [ $filetype2 == xyz ]
+then
+x2t $2 > $filename2\_ts/coord
+elif [ $filetype2 == pdb ]
+then
+babel -ipdb $2 -oxyz $filename2.xyz
+x2t $filename2.xyz > $filename2\_ts/coord
+elif [ $filetype2 == mol2 ]
+then
+babel -imol2 $2 -oxyz $filename2.xyz
+x2t $filename2.xyz > $filename2\_ts/coord
+fi
+
+mkdir $filename1\_ts/step1
+mkdir $filename1\_ts/step2
+mkdir $filename1\_ts/step3
+mkdir $filename1\_ts/step4
+mkdir $filename1\_ts/step5
+mkdir $filename1\_ts/step6
+
+if [ -a xtemp1 ]; then rm xtemp1; fi
+if [ -a xtemp2 ]; then rm xtemp2; fi
+if [ -a xtemp3 ]; then rm xtemp3; fi
+if [ -a xtemp4 ]; then rm xtemp4; fi
+if [ -a xtemp5 ]; then rm xtemp5; fi
+if [ -a xtemp6 ]; then rm xtemp6; fi
+
+
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $1}') <(yes - | head -$(wc -l < $filename1\_ts/coord)) <(cat $filename2\_ts/coord | awk -F" " '{print $1}') | sed s/--/+/g | grep -e "[0-9]" | bc > xtemp
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $2}') <(yes - | head -$(wc -l < $filename1\_ts/coord)) <(cat $filename2\_ts/coord | awk -F" " '{print $2}') | sed s/--/+/g | grep -e "[0-9]" | bc > ytemp
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $3}') <(yes - | head -$(wc -l < $filename1\_ts/coord)) <(cat $filename2\_ts/coord | awk -F" " '{print $3}') | sed s/--/+/g | grep -e "[0-9]" | bc > ztemp
+
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $1}' | grep -e "[0-9]") <(yes +0.15* | head -$(wc -l < xtemp) | sed 's/+/-/g') <(cat xtemp | awk -F" " '{print $1}') | bc > xtemp1
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $2}' | grep -e "[0-9]") <(yes +0.15* | head -$(wc -l < xtemp) | sed 's/+/-/g') <(cat ytemp | awk -F" " '{print $1}') | bc > ytemp1
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $3}' | grep -e "[0-9]") <(yes +0.15* | head -$(wc -l < xtemp) | sed 's/+/-/g') <(cat ztemp | awk -F" " '{print $1}') | bc > ztemp1
+
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $1}' | grep -e "[0-9]") <(yes +0.30* | head -$(wc -l < xtemp) | sed 's/+/-/g') <(cat xtemp | awk -F" " '{print $1}') | bc > xtemp2
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $2}' | grep -e "[0-9]") <(yes +0.30* | head -$(wc -l < xtemp) | sed 's/+/-/g') <(cat ytemp | awk -F" " '{print $1}') | bc > ytemp2
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $3}' | grep -e "[0-9]") <(yes +0.30* | head -$(wc -l < xtemp) | sed 's/+/-/g') <(cat ztemp | awk -F" " '{print $1}') | bc > ztemp2
+
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $1}' | grep -e "[0-9]") <(yes +0.45* | head -$(wc -l < xtemp) | sed 's/+/-/g') <(cat xtemp | awk -F" " '{print $1}') | bc > xtemp3
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $2}' | grep -e "[0-9]") <(yes +0.45* | head -$(wc -l < xtemp) | sed 's/+/-/g') <(cat ytemp | awk -F" " '{print $1}') | bc > ytemp3
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $3}' | grep -e "[0-9]") <(yes +0.45* | head -$(wc -l < xtemp) | sed 's/+/-/g') <(cat ztemp | awk -F" " '{print $1}') | bc > ztemp3
+
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $1}' | grep -e "[0-9]") <(yes +0.55* | head -$(wc -l < xtemp) | sed 's/+/-/g') <(cat xtemp | awk -F" " '{print $1}') | bc > xtemp4
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $2}' | grep -e "[0-9]") <(yes +0.55* | head -$(wc -l < xtemp) | sed 's/+/-/g') <(cat ytemp | awk -F" " '{print $1}') | bc > ytemp4
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $3}' | grep -e "[0-9]") <(yes +0.55* | head -$(wc -l < xtemp) | sed 's/+/-/g') <(cat ztemp | awk -F" " '{print $1}') | bc > ztemp4
+
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $1}' | grep -e "[0-9]") <(yes +0.70* | head -$(wc -l < xtemp) | sed 's/+/-/g') <(cat xtemp | awk -F" " '{print $1}') | bc > xtemp5
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $2}' | grep -e "[0-9]") <(yes +0.70* | head -$(wc -l < xtemp) | sed 's/+/-/g') <(cat ytemp | awk -F" " '{print $1}') | bc > ytemp5
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $3}' | grep -e "[0-9]") <(yes +0.70* | head -$(wc -l < xtemp) | sed 's/+/-/g') <(cat ztemp | awk -F" " '{print $1}') | bc > ztemp5
+
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $1}' | grep -e "[0-9]") <(yes +0.85* | head -$(wc -l < xtemp) | sed 's/+/-/g') <(cat xtemp | awk -F" " '{print $1}') | bc > xtemp6
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $2}' | grep -e "[0-9]") <(yes +0.85* | head -$(wc -l < xtemp) | sed 's/+/-/g') <(cat ytemp | awk -F" " '{print $1}') | bc > ytemp6
+paste -d "" <(cat $filename1\_ts/coord | awk -F" " '{print $3}' | grep -e "[0-9]") <(yes +0.85* | head -$(wc -l < xtemp) | sed 's/+/-/g') <(cat ztemp | awk -F" " '{print $1}') | bc > ztemp6
+
+cat $filename1\_ts/coord | grep ' [a-z]' | awk -F" " '{print $4}' > atomlist
+
+echo "\$coord" > $filename1\_ts/step1/coord
+paste -d "("  <(cat <(paste xtemp1 ytemp1 ztemp1) | awk -f ~/mikescripts/column20.awk | sed 's/\ \./0\./g' | sed 's/\ \-\./\-0\./g') <(cat atomlist) | sed 's/(/      /g' >> $filename1\_ts/step1/coord
+echo "\$user-defined bonds" >> $filename1\_ts/step1/coord
+echo "\$end" >> $filename1\_ts/step1/coord
+
+echo "\$coord" > $filename1\_ts/step2/coord
+paste -d "(" <(cat <(paste xtemp2 ytemp2 ztemp2) | awk -f ~/mikescripts/column20.awk | sed 's/\ \./0\./g' | sed 's/\ \-\./\-0\./g') <(cat atomlist) | sed 's/(/      /g' >> $filename1\_ts/step2/coord
+echo "\$user-defined bonds" >> $filename1\_ts/step2/coord
+echo "\$end" >> $filename1\_ts/step2/coord
+
+echo "\$coord" > $filename1\_ts/step3/coord
+paste -d "(" <(cat <(paste xtemp3 ytemp3 ztemp3) | awk -f ~/mikescripts/column20.awk | sed 's/\ \./0\./g' | sed 's/\ \-\./\-0\./g') <(cat atomlist) | sed 's/(/      /g' >> $filename1\_ts/step3/coord
+echo "\$user-defined bonds" >> $filename1\_ts/step3/coord
+echo "\$end" >> $filename1\_ts/step3/coord
+
+echo "\$coord" > $filename1\_ts/step4/coord
+paste -d "(" <(cat <(paste xtemp4 ytemp4 ztemp4) | awk -f ~/mikescripts/column20.awk | sed 's/\ \./0\./g' | sed 's/\ \-\./\-0\./g') <(cat atomlist) | sed 's/(/      /g' >> $filename1\_ts/step4/coord
+echo "\$user-defined bonds" >> $filename1\_ts/step4/coord
+echo "\$end" >> $filename1\_ts/step4/coord
+
+echo "\$coord" > $filename1\_ts/step5/coord
+paste -d "(" <(cat <(paste xtemp5 ytemp5 ztemp5) | awk -f ~/mikescripts/column20.awk | sed 's/\ \./0\./g' | sed 's/\ \-\./\-0\./g') <(cat atomlist) | sed 's/(/      /g' >> $filename1\_ts/step5/coord
+echo "\$user-defined bonds" >> $filename1\_ts/step5/coord
+echo "\$end" >> $filename1\_ts/step5/coord
+
+echo "\$coord" > $filename1\_ts/step6/coord
+paste -d "(" <(cat <(paste xtemp6 ytemp6 ztemp6) | awk -f ~/mikescripts/column20.awk | sed 's/\ \./0\./g' | sed 's/\ \-\./\-0\./g') <(cat atomlist) | sed 's/(/      /g' >> $filename1\_ts/step6/coord
+echo "\$user-defined bonds" >> $filename1\_ts/step6/coord
+echo "\$end" >> $filename1\_ts/step6/coord
+
+if [ -a xtemp1 ]; then rm xtemp1; fi
+if [ -a xtemp2 ]; then rm xtemp2; fi
+if [ -a xtemp3 ]; then rm xtemp3; fi
+if [ -a xtemp4 ]; then rm xtemp4; fi
+if [ -a xtemp5 ]; then rm xtemp5; fi
+if [ -a xtemp6 ]; then rm xtemp6; fi
+
+if [ -a ytemp1 ]; then rm ytemp1; fi
+if [ -a ytemp2 ]; then rm ytemp2; fi
+if [ -a ytemp3 ]; then rm ytemp3; fi
+if [ -a ytemp4 ]; then rm ytemp4; fi
+if [ -a ytemp5 ]; then rm ytemp5; fi
+if [ -a ytemp6 ]; then rm ytemp6; fi
+
+if [ -a ztemp1 ]; then rm ztemp1; fi
+if [ -a ztemp2 ]; then rm ztemp2; fi
+if [ -a ztemp3 ]; then rm ztemp3; fi
+if [ -a ztemp4 ]; then rm ztemp4; fi
+if [ -a ztemp5 ]; then rm ztemp5; fi
+if [ -a ztemp6 ]; then rm ztemp6; fi
+
+if [ -a atomlist ]; then rm atomlist; fi
+if [ -a xtemp ]; then rm xtemp; fi
+if [ -a ytemp ]; then rm ytemp; fi
+if [ -a ztemp ]; then rm ztemp; fi
+if [ -d $filename2\_ts ]; then rm -r $filename2\_ts; fi
+
+if [[ $3 ]]
+then
+mtmfilename=`echo $3 | awk -F"." '{print $1}'`
+mtmfiletype=`echo $3 | awk -F"." '{print $NF}'`
+if [ $mtmfiletype == mtm ]
+then
+for ii in step1 step2 step3 step4 step5 step6
+do
+cp $mtmfilename.mtm $filename1\_ts/$ii/$ii.mtm
+cd $filename1\_ts/$ii
+performturbomole coord yes
+cd ../..
+done
+else
+echo "that isn't mtm extension"
+fi
+fi

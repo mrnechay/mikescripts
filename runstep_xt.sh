@@ -1,0 +1,234 @@
+#!/bin/bash
+#
+queue=" "
+nofile=0
+fileexist=0
+toomanyargs=0
+DIR=`pwd`
+submit=0
+cores="8"
+node_type="4"
+wall="24"
+mem="0"
+h_data="0"
+#
+ECHO='echo -en'
+#
+usage() {
+   $ECHO "\n\tAN ERROR WAS ENCOUNTERED:\n\n"
+   $ECHO "\tUsage:\trunturbomole.sh [-N cores] [-t time] [-q queue] [-sub] [-help]  script_name \n\n"
+   $ECHO "\t\t-N\t  :\tcores to use, \t\t\t\t[default:     8      \t]\n"
+   $ECHO "\t\t-type\t :\tnode_typeto use, \t\t\t\t[default:     8      \t]\n"
+   $ECHO "\t\t-mem\t  :\tmemory used,\t\t\t\t[default: 1024Mb*core\t] \n"
+   $ECHO "\t\t-h_data\t  :\tmemory used,\t\t\t\t[default: 1024Mb*core\t] \n"
+   $ECHO "\t\t-t\t  :\tWalltime to use, in hours.\t\t[default:    24   \t] \n"
+   $ECHO "\t\t-sub\t  :\t(no argument) Submit the job.\t\t[default: don't submit\t]\n"
+   $ECHO "\t\t-q\t  :\tSpecify the queue (highp or std).\t[default:    \t]\n"
+   $ECHO "\t\t-help\t  :\tPrint this message.\n\n"
+   if [ $fileexist -eq 1 ]; then
+      $ECHO "\tERROR: The file you specified did not exist...\n\n"
+   fi
+   if [ $nofile -eq 1 ]; then
+      $ECHO "\tERROR: You did not specify a file...\n\n"
+   fi
+   if [ $toomanyargs -eq 1 ]; then
+      $ECHO "\tERROR: I expect only one argument...\n\n"
+   fi
+   exit 10
+}
+#
+makefile() {
+
+runfile=`basename $PWD`_$1.sh
+name=`basename $PWD`_$1
+
+
+cat << %EOF% > $runfile
+#!/bin/csh -f
+#
+#  SGE job for script built  $(date +%c)
+#
+#  Use current working directory
+#$ -cwd
+#  input           = /dev/null
+#  output          = $DIR/$name.joblog
+#$ -o $DIR/$name.joblog.\$JOB_ID
+#  error           = Merged with joblog
+#$ -j y
+#  Parallelism:  $cores-way parallel
+
+#  Resources requested
+#$ -pe ${node_type}threads* $cores
+##$ -pe dc_* $cores
+##$ -l mem=$((mem))G,time=$wall:00:00,highp
+#$ -l h_data=$((h_data))G,time=$wall:00:00,highp
+
+#  Name of application for log
+#$ -v QQAPP=openmpi
+
+#  Email address to notify
+#$ -M $USER@mail
+#  Notify at beginning and end of job
+#$ -m a
+#  Job is not rerunable
+#$ -r n
+
+#  Uncomment the next line to have your environment variables used by SGE
+#$ -V
+
+#
+# Initialization for mpi parallel execution
+#
+  unalias *
+  set qqversion = 
+  set qqapp     = "openmpi parallel"
+  set qqptasks  = $cores
+  set qqidir    = $DIR
+  set qqjob     = $name
+  set qqodir    = $DIR
+  ##set global_scratch = /u/scratch/$USER/job_\$JOB_ID
+  set global_scratch = $SCRATCH/job_\$JOB_ID
+  #set global_scratch = $HOME/tmp/job_\$JOB_ID
+  mkdir \$global_scratch
+
+  source /u/local/bin/qq.sge/qr.runtime
+  if (\$status != 0) exit (1)
+#
+  echo "SGE job for script built Wed Sep 22 08:36:30 PDT 2010"
+  echo ""
+  echo "  script directory:"
+  echo "    "\$qqidir
+  echo "  Submitted to SGE:"
+  echo "    "\$qqsubmit
+  echo "  'scratch' directory (on each node):"
+  echo "     \$qqscratch"
+  echo "  script $cores-way parallel job configuration:"
+  echo "    \$qqconfig" | tr "\\\\" "\n"
+#
+  echo ""
+  echo "script started on:   "\` hostname -s \`
+  echo "script started at:   "\` date \`
+  echo ""
+#
+# Run the user program
+#
+
+   if !(\$?LD_LIBRARY_PATH) then
+       setenv LD_LIBRARY_PATH  /u/local/intel/11.1/openmpi/1.4.2/lib:/u/local/compilers/intel/11.1/current/lib/intel64
+   else
+       setenv LD_LIBRARY_PATH /u/local/intel/11.1/openmpi/1.4.2/lib:/u/local/compilers/intel/11.1/current/lib/intel64:\${LD_LIBRARY_PATH}
+   endif
+
+   echo "    \$qqconfig" | tr "\\\\" "\n" | awk '{print \$2, \$4 }' > \$global_scratch/nodes.\$JOB_ID
+   ~snedd/bin/list_hosts.sh \$global_scratch/nodes.\$JOB_ID \$global_scratch/core_list.\$JOB_ID
+
+  setenv TURBODIR /u/home/s/snedd/bin/TURBOMOLE
+  source \$TURBODIR/Config_turbo_env.tcsh
+  #setenv PARA_ARCH MPI
+  setenv PARA_ARCH SMP
+  set path=(\$TURBODIR/bin/`sysname` \$path)
+  setenv PARNODES  $cores
+  setenv HOSTS_FILE \$global_scratch/core_list.\$JOB_ID
+
+  setenv TURBOTMPDIR \$global_scratch
+
+
+  set time=(10 "System time: %S  User time: %U  Elapsed time: %E")
+  time   step.sh $1 $2  \$global_scratch  \$JOB_ID  >& step${1}.sh.out
+  
+  find . -type f -iname *dsk* | awk '{ print "rm", \$1}' | sh
+
+  rm -rf \$global_scratch/*
+
+  echo ""
+  echo "step.sh finished at:  "` date `
+
+#
+# Cleanup after mpi parallel execution
+  rm -rf \$global_scratch
+#
+  source /u/local/bin/qq.sge/qr.runtime
+#
+  
+  runstep_xt.sh -sub -N $cores -t $wall -q highp $3 $4
+
+
+  exit (0)
+
+%EOF%
+
+}
+
+
+
+
+#
+while [ -n "`echo $1 | grep '^-'`" ]; do
+   case $1 in
+      -help)
+         usage ;;
+      -sub)
+         submit=1 ;;
+      -N)
+         cores=$2
+         shift ;;
+      -type)
+         node_type=$2
+         shift ;;
+      -q)
+         queue=$2
+         if [ "$queue" == "std" ]; then
+            queue=" "
+         fi
+         shift ;;
+#     -mem)
+#        mem=$2
+#        shift ;;
+      -h_data)
+         h_data=$2
+         shift ;;
+      -t)
+         wall=$2
+         shift ;;
+      -*)
+         usage ;;
+   esac
+   shift
+done
+#
+#echo "\$1 = $1"
+#
+#
+
+
+#if [ "$mem" == "0" ]; then
+#  mem=4
+#  (( mem*=$cores ))
+#  if [ "$mem" -gt "8" ]; then mem=4; fi 
+##echo $mem
+#fi
+if [ "$h_data" == "0" ]; then
+  h_data=4
+  (( h_data*=$cores ))
+  if [ "$h_data" -gt "8" ]; then h_data=4; fi 
+#echo $h_data
+fi
+
+if [ "$cores" -gt "1" ]; then
+  #export PARA_ARCH=MPI
+  export PARA_ARCH=SMP
+fi
+
+#
+runfile="thisiscrap"
+next=$(( $2 + 1 ))
+final=$(( $next + $2 - $1 ))
+
+makefile $1 $2 $next $final $runfile
+#
+if [ $submit -eq 0 ]; then
+   $ECHO "Now just do 'qsub $runfile'\n"
+else
+   $ECHO "Submitting '$runfile'\n"
+   qsub $runfile
+fi

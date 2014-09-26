@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# example input:
+# autoscrewer 1 50
+# $1 is vibrational mode to screwer
+# $2 is the temp to screwer at (use higher for lower freq neg frequencies.
+
+if [ -d screwereda ]; then echo "oops there are already screwer dir"; exit 0; fi
+if [ -d screweredb ]; then echo "oops there are already screwer dir"; exit 0; fi
+mkdir screwereda
+mkdir screweredb
+
+
+if [ -a screwer.mtm ]
+then
+cp screwer.mtm screwereda/screwereda.mtm
+cp screwer.mtm screweredb/screweredb.mtm
+else
+echo "please make a screwer.mtm file"
+rm -r screwereda
+rm -r screweredb
+exit 0
+fi
+
+echo '$coord' > screwereda/coord
+echo -e "$1\n$2\n" | screwer >> screweroutput
+grep -A 1000 newcoord control | tail -n +3 | head -n -1 >> screwereda/coord
+echo '$user-defined bonds' >> screwereda/coord
+echo '$end' >> screwereda/coord
+
+
+
+echo '$coord' > screweredb/coord
+echo -e "$1\n-$2\n" | screwer >> screweroutput
+grep -A 1000 newcoord control | tail -n +3 | head -n -1 >> screweredb/coord
+echo '$user-defined bonds' >> screweredb/coord
+echo '$end' >> screweredb/coord
+
+if [[ "$3" == "yes" ]]
+then
+cd screwereda
+performturbomole coord yes
+cd ../screweredb
+performturbomole coord yes
+cd ..
+fi

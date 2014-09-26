@@ -1,0 +1,100 @@
+# 1 is the turbomole directory
+
+
+unset running
+unset energy
+unset iteration
+
+if [ -a qstatmnechay ]; then rm qstatmnechay; fi
+qstat -r -u mnechay > qstatmnechay
+
+if [ -a tempgenentableQtable ]; then rm tempgenentableQtable; fi
+if [ -a tempgenentableQtable2 ]; then rm tempgenentableQtable2; fi
+
+echo "name,lastenergy,averagelast10,lowestlast10,iteration,running" > tempgenentableQtable
+
+
+if [[ -z "$1" ]]
+then
+for jj in `echo */ | sed 's:/::g'`
+do
+unset running
+unset energy
+unset iteration
+
+if [ -a $jj/qm_opt_energies.dat ]
+then
+cat qstatmnechay | grep $jj > tempgenentableQtable2
+if [ -s tempgenentableQtable2 ]
+then
+running=yes
+if [ -a tempgenentableQtable2 ]; then rm tempgenentableQtable2; fi
+else
+running=no
+if [ -a tempgenentableQtable2 ]; then rm tempgenentableQtable2; fi
+fi
+
+cd $jj
+energy=`cat qm_opt_energies.dat | tail -1 | awk -F" " '{print $2}'`
+iteration=`echo Iteration_* | sed 's/Iteration_/\n/g' | sort -nr | head -n +1` 
+
+if [ $iteration -gt 10 ]
+then
+if [ -a tempgenentableQtable3 ]; then rm tempgenentableQtable3; fi
+cat <(echo `cat qm_opt_energies.dat | tail -10 | awk -F" " '{print $2}' | tr '\n' '+' | sed 's:+-:-:g' | sed 's:+::g'` | bc) <(echo "*0.1") | tr "\\n" " " | sed 's/ \*/\*/g' | sed 's: :\n:g' | bc > tempgenentableQtable3
+avenergy=`cat tempgenentableQtable3`
+rm tempgenentableQtable3
+lowenergy=`cat qm_opt_energies.dat | tail -10 | sort -nk2 | head -n +1 | awk -F" " '{print $2}'`
+else
+avenergy=na
+lowenergy=na
+fi
+
+cd ..
+echo "$jj,$energy,$avenergy,$lowenergy,$iteration,$running" >> tempgenentableQtable
+fi
+
+done
+
+cat tempgenentableQtable | sed 's/,/ /g' | column -t
+
+else
+
+if [ -a $1/qm_opt_energies.dat ]
+then
+cat qstatmnechay | grep $1 > tempgenentableQtable2
+if [ -s tempgenentableQtable2 ]
+then
+running=yes
+if [ -a tempgenentableQtable2 ]; then rm tempgenentableQtable2; fi
+else
+running=no
+if [ -a tempgenentableQtable2 ]; then rm tempgenentableQtable2; fi
+fi
+
+cd $1
+energy=`cat qm_opt_energies.dat | tail -1 | awk -F" " '{print $2}'`
+iteration=`echo Iteration_* | sed 's/Iteration_/\n/g' | sort -nr | head -n +1`
+
+if [ $iteration -gt 10 ]
+then
+if [ -a tempgenentableQtable3 ]; then rm tempgenentableQtable3; fi
+cat <(echo `cat qm_opt_energies.dat | tail -10 | awk -F" " '{print $2}' | tr '\n' '+' | sed 's:+-:-:g' | sed 's:+::g'` | bc) <(echo "*0.1") | tr "\\n" " " | sed 's/ \*/\*/g' | sed 's: :\n:g' | bc > tempgenentableQtable3
+avenergy=`cat tempgenentableQtable3`
+rm tempgenentableQtable3
+else
+avenergy=na
+fi
+
+cd ..
+
+
+
+
+echo "name,lastenergy,last10average,iteration,running
+$1,$energy,$avenergy,$iteration" | sed 's/,/ /g' | column -t 
+
+fi
+fi
+if [ -a tempgenentableQtable ]; then rm tempgenentableQtable; fi
+if [ -a qstatmnechay ]; then rm qstatmnechay; fi

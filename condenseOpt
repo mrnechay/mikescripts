@@ -1,0 +1,12 @@
+if [ -a condensedOpt.xyz ]; then rm condensedOpt.xyz; fi
+
+Opt=$1
+numtoskip=$2
+
+numlines=`cat $Opt | wc -l`
+numentries=`grep Energy $Opt | wc -l`
+numatoms=$(($numlines/$numentries))
+skip=$(($numatoms*$numtoskip))
+numatomsminus1=$(($numatoms-1))
+
+for ii in `seq 1 $skip $numlines`; do sed -n "$ii,$(($ii+$numatomsminus1))p;$(($ii+$numatomsminus1))q" $Opt >> condensedOpt.xyz; done
