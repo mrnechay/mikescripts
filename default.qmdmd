@@ -5,38 +5,47 @@
 ####################
 
 Basic cluster options:
-  slots            = 4
-  time             = 24
-  exclusive        = y
+  slots             = 4
+  time              = 24
+  exclusive         = y
 
 Calculation basics (substrate and metal ONLY):
-  charge           = 0
-  multiplicity     = 1
+  charge            = 0
+  multiplicity      = 1
 
 # The script will account for negative/positive charged residues
 
 DMD options:
-  Initial T (Ti)   = 0.1
-  Final T (Tf)     = 0.1
-  Cluster size     = 3
-  Steps annealing  = 40
-  Movie dt         = 10
-  DMD time steps   = 10000
-  Max Iteration    = 40
-  Equilibrate      = true
-  Discard          = true
-  Converge DMD     = true
+  Initial T (Ti)    = 0.1
+  Final T (Tf)      = 0.1
+  Cluster size      = 3
+  Steps annealing   = 40
+  Movie dt          = 10
+  DMD time steps    = 10000
+  Max Iteration     = 40
+  Equilibrate       = true
+  Discard           = true
+  Converge DMD      = true
+  Disp. magnitude   = 0.2
+  All residues free = true
 
 QM Residues and optional adjustments:
-  HIS55-HIS57N     = default-default
-  glu59            = default
-  asp74            = default
-  CYS101           = default
+  HIS32-ASP34N      = FrzDF , ProtDef-ProtDef
+  SER7              = FrzDF , ProtDef
+  his67             = FrzDF , ProtDef
+  met69             = FrzDF , ProtDef
+  SER195            = FrzDF , ProtDef
+  asp172            = FrzDF , ProtDef
+
+Custom Substrate cut(s) - one per line:
+  C106 - C109
 
 # Other flags (to the right of equals sign, separate multiple with commas):
 # 
 # Prot1 - protonate atom 1
 # DProt - deprotonate
+# ProtDef - default protonation state
+# FrzDF - freeze only atoms at QM boundary
 # FrzBB - freeze backbone
 # FrzAA - freeze entire amino acid
 #
