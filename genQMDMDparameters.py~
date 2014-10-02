@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/bin/user/python
 
 # This script reads from the .qmdmd input file and generates the files needed
 # to interface TURBOMOLE and DMD including chopping the desired regions.
@@ -8,13 +8,9 @@ from subprocess import call
 import copy
 import re
 from operator import itemgetter
-import sys
 
 qmdmdInput = "default.qmdmd"
 pdbFile = "try.pdb"
-workingDir = sys.argv[1]
-pdbFile = sys.argv[2]
-qmdmdInput = "%s.qmdmd" % (workingDir)
 
 # initiate variables/dictionaries
 clusterOptions = {
@@ -37,10 +33,7 @@ DMDoptions = {
              'Equilibrate': 'true',
              'Discard': 'true',
              'Converge': 'true',
-             'Dispmagnitude': '0.3'
 }
-
-allResFree = False
 
 qmResidueList = []
 substrateCutList = []
@@ -90,112 +83,15 @@ with open(qmdmdInput) as infile:
             elif "Equilibrate" in line:
                 DMDoptions['Equilibrate'] = line.split()[-1]       
             elif "Discard" in line:
-                DMDoptions['Discard'] = line.split()[-1]
+                DMDoptions['Discard'] = line.split()[-1]       
             elif "Converge" in line:
-                DMDoptions['Converge'] = line.split()[-1]
-            elif "  Disp. magnitude" in line:
-                DMDoptions['Dispmagnitude'] = float(line.split()[-1])
-            elif "All residues free" in line:
-                if line.split()[-1] == 'true':
-                    allResFree = True
-                else:
-                    allResFree = False
+                DMDoptions['Converge'] = line.split()[-1]       
             elif "QM Residues" in line:
                 cutSection = True
 
+babelCall = 'babel %s pdb.mol2 2> /dev/null' % (pdbFile)
 
-
-# Let's first loop through the residue list to match protonation and deprotonation requests
-
-# The previous script, setupqmdmd.mike, recognized incorrect HIS protonation and corrected it.
-# If that was done, let's copy it over so the correction becomes the default protonation state.
-
-allRes = []
-allProtOpt = []
-inConstrProtDeprot = []
-
-with open('inConstr') as inConstrFile:
-    for ii in inConstrFile:
-        if 'Protonate' in ii or 'Deprotonate' in ii:
-            inConstrProtDeprot.append(ii)
-
-# HIS correction has been loaded. On to user options
-
-for idx, ii in enumerate(qmResidueList):
-    if len(ii[-1].split("-")) > 1:
-        allRes.append(ii[0].split("-")[0])
-        allRes.append(ii[0].split("-")[0])
-        allProtOpt.append(ii[-1].split("-")[0])
-        allProtOpt.append(ii[-1].split("-")[1])
-    else:
-        allRes.append(ii[0])
-        allProtOpt.append(ii[-1])
-
-for idx, ii in enumerate(allRes):
-    aminoname = ii[0][0:3].upper()
-    aminonum = ii[0][3:]
-    if allProtOpt[idx][0:4] == 'Prot':
-        if aminoname == 'HIS':
-            inConstrProtDeprot.append('Protonate A:%d:ND1' % (aminonum))
-        if aminoname == 'ASP':
-            inConstrProtDeprot.append('Protonate A:%d:OD%s' % (aminonum, allProtOpt[idx][4]))
-        if aminoname == 'SER':
-            inConstrProtDeprot.append('Protonate A:%d:OG' % (aminonum))
-        if aminoname == 'THR':
-            inConstrProtDeprot.append('Protonate A:%d:OG1' % (aminonum))
-        if aminoname == 'ASP':
-            if allProtOpt[idx][4] == 1:
-                inConstrProtDeprot.append('Protonate A:%d:OD1' % (aminonum))
-            elif allProtOpt[idx][4] == 2:
-                inConstrProtDeprot.append('Protonate A:%d:OD2' % (aminonum))
-        if aminoname == 'GLU':
-            if allProtOpt[idx][4] == 1:
-                inConstrProtDeprot.append('Protonate A:%d:OE1' % (aminonum))
-            elif allProtOpt[idx][4] == 2:
-                inConstrProtDeprot.append('Protonate A:%d:OE2' % (aminonum))
-        if aminoname == 'ASN':
-            if allProtOpt[idx][4] == 1:
-                inConstrProtDeprot.append('Protonate A:%d:OD1' % (aminonum))
-            elif allProtOpt[idx][4] == 2:
-                inConstrProtDeprot.append('Protonate A:%d:ND2' % (aminonum))
-        if aminoname == 'GLN':
-            if allProtOpt[idx][4] == 1:
-                inConstrProtDeprot.append('Protonate A:%d:OE1' % (aminonum))
-            elif allProtOpt[idx][4] == 2:
-                inConstrProtDeprot.append('Protonate A:%d:NE2' % (aminonum))
-        if aminoname == 'TYR':
-            inConstrProtDeprot.append('Protonate A:%d:OH' % (aminonum))
-        if aminoname == 'TRP':
-            inConstrProtDeprot.append('Protonate A:%d:NE1' % (aminonum))
-    elif allProtOpt[idx][0:5] == 'DProt':
-        if aminoname == 'ARG':
-            inConstrProtDeprot.append('Deprotonate A:%d:NH1' % (aminonum))
-        elif aminoname == 'HIS':
-            inConstrProtDeprot.append('Deprotonate A:%d:NE1' % (aminonum))
-        elif aminoname == 'LYS':
-            inConstrProtDeprot.append('Deprotonate A:%d:NZ' % (aminonum))
-        elif aminoname == 'CYS':
-            inConstrProtDeprot.append('Deprotonate A:%d:SF' % (aminonum))
-        elif aminoname == 'SEC':
-            inConstrProtDeprot.append('Deprotonate A:%d:SEF' % (aminonum))
-        elif aminoname == 'SER':
-            inConstrProtDeprot.append('Deprotonate A:%d:OG' % (aminonum))
-        elif aminoname == 'THR':
-            inConstrProtDeprot.append('Deprotonate A:%d:OG1' % (aminonum))
-        elif aminoname == 'ASN':
-            inConstrProtDeprot.append('Deprotonate A:%d:ND2' % (aminonum))
-        elif aminoname == 'GLN':
-            inConstrProtDeprot.append('Deprotonate A:%d:NE2' % (aminonum))
-        elif aminoname == 'TYR':
-            inConstrProtDeprot.append('Deprotonate A:%d:OH' % (aminonum))
-
-call("pdb_to_pdbDMD.sh %s _temp.pdb >> qmdmdsetup.log 2>> qmdmdsetup.err" % (pdbFile), shell=True)
-call("mv _temp.pdb %s" % (pdbFile), shell=True)
-call("sed -i 's/Eh/ H/g' %s" % (pdbFile), shell=True)
-
-####### Protonation and Deprotonation requests fulfilled ######################
-
-call('babel %s pdb.mol2 2> /dev/null' % (pdbFile), shell=True)
+call(babelCall, shell=True)
 mol2file = "pdb.mol2"
 
 def getBondList(fileToDo):
@@ -323,13 +219,12 @@ with open(pdbFile) as proteinfile:
             Ycoordinate.append(float(ii[38:46]))
             Zcoordinate.append(float(ii[46:54]))
             elementsymbol.append(ii[76:78])
-            
+
             atomsbonded = bondlist[COUNTER-1][1:]
             COUNTER += 1
 
 # pdb file now in memory
 ######################################################
-
 
 # Initialize variables that carry the information for input lists:
 
@@ -464,10 +359,10 @@ for ii in qmResidueList:
                         '%s A *%s ' % (residuename[ii-1], residuesequencenumber[ii-1]), re.IGNORECASE) and '%s %s%s' % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1]) not in qmRes:
                 qmRes[resCounter] = '%s %s%s' % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1])
 
-                if begResOption == "N":
-                    qmSkip = [" N  ", " HN "]
-                    qmChop[resCounter] = ["N", "CA"]
-                    qmFrez[resCounter] = ["CA"]
+                if begResOption == "":
+                    qmSkip = [" C  ", " O  "]
+                    qmChop[resCounter] = ["CA", "C"]
+                    qmFrez[resCounter] = ["C"]
                     aminoname = begAminoName
 
                     if aminoname == 'ARG':
@@ -484,11 +379,10 @@ for ii in qmResidueList:
                                     '%s A *%s' % (residuename[kk-1], residuesequencenumber[kk-1]), re.IGNORECASE) and atomname[kk-1] not in qmSkip:
                             qmList[resCounter].append(atomname[kk-1].replace(" ", ""))
 
-                elif begResOption == "":
-                    qmList[resCounter].append("C")
-                    qmList[resCounter].append("O")
-                    qmChop[resCounter] = ["CA", "C"]
-                    qmFrez[resCounter] = ["C"]
+                elif begResOption == "N":
+                    qmList[resCounter].append(" N  ")
+                    qmChop[resCounter] = ["CA", "N"]
+                    qmFrez[resCounter] = ["N"]
 
                 keepGoing = True
                 if option  == 'FrzBB':
@@ -512,9 +406,9 @@ for ii in qmResidueList:
                         keepGoing = False
                         aminoname = endAminoName
 
-                        if endResOption == "":
-                            qmSkip = [" C  ", " O  "]
-                            qmChop[resCounter] = ["C", "CA"]
+                        if endResOption == "N":
+                            qmSkip = [" N  "]
+                            qmChop[resCounter] = ["N", "CA"]
                             qmFrez[resCounter] = ["CA"]
 
                             if aminoname == 'ARG':
@@ -531,10 +425,11 @@ for ii in qmResidueList:
                                             '%s A *%s' % (residuename[kk-1], residuesequencenumber[kk-1]), re.IGNORECASE) and atomname[kk-1] not in qmSkip:
                                     qmList[resCounter].append(atomname[kk-1].replace(" ", ""))
 
-                        elif endResOption == "N":
-                            qmList[resCounter].append("N")
-                            qmChop[resCounter] = ["CA", "N"]
-                            qmFrez[resCounter] = ["N"]
+                        elif begResOption == "":
+                            qmList[resCounter].append("C")
+                            qmList[resCounter].append("O")
+                            qmChop[resCounter] = ["CA", "C"]
+                            qmFrez[resCounter] = ["C"]
 
                         if option  == 'FrzBB':
                             for jj in qmList[resCounter]:
@@ -593,10 +488,10 @@ subPresent = False # False until existence is proven
 metalList = []
 
 for ii in atomserialnospaces:
-    if atom[ii-1] == 'HETATM' and atomname[ii-1].lower().replace(" ", "") in ["li", "be", "na", "mg", "k", "ca", "sc", "ti", "v", "cr", "mn", "fe", "co", "ni", "cu", "zn", "rb", "sr", "y", "zr", "nb", "mo", "tc", "ru", "pd", "ag", "cd", "cs", "ba", "hf", "ta", "w", "re", "os", "ir", "pt", "au", "hg", "la", "ce", "pr", "nd", "pm", "sm", "eu", "gd", "tb", "dy", "ho", "er", "tm", "yb", "lu"]:
+    if atom[ii-1] == 'HETATM' and elementsymbol[ii-1].lower().replace(" ", "") in ["li", "be", "na", "mg", "k", "ca", "sc", "ti", "v", "cr", "mn", "fe", "co", "ni", "cu", "zn", "rb", "sr", "y", "zr", "nb", "mo", "tc", "ru", "pd", "ag", "cd", "cs", "ba", "hf", "ta", "w", "re", "os", "ir", "pt", "au", "hg", "la", "ce", "pr", "nd", "pm", "sm", "eu", "gd", "tb", "dy", "ho", "er", "tm", "yb", "lu"]:
         metalPresent = True
         if "%s %s%s" % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1]) not in qmRes:
-            metalList.append(atomname[ii-1].replace(" ", ""))
+            metalList.append(elementsymbol[ii-1])
             qmList[resCounter] = [atomname[ii-1].replace(" ", "")]
             qmChop[resCounter] = ["Don't chop"]
             qmFrez[resCounter] = ["Don't freeze"]
@@ -644,8 +539,8 @@ for ii in atomserialnospaces:
         elif substrateCutList == []:
             qmRes[resCounter] = "%s %s%s" % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1])
             qmList[resCounter] = [] #initialize list of atoms to include in QM region
-            qmFrez[resCounter] = ["Don't freeze"]
-            qmChop[resCounter] = ["Don't chop"]
+            qmFrez[resCounter] = "Don't freeze"
+            qmChop[resCounter] = "Don't chop"
             for pp in atomserialnospaces:
                 if "%s %s" % (residuename[pp-1], chainidentifier[pp-1]) == 'SUB B':
                     qmList[resCounter].append(atomname[pp-1].replace(" ", ""))
@@ -658,7 +553,6 @@ for ii in atomserialnospaces:
 qmList = filter(None, qmList)
 qmRes = filter(None, qmRes)
 qmChop = filter(None, qmChop)
-
 
 third = []
 
@@ -675,6 +569,19 @@ qmFrez = [x for (y,x) in sorted(zip(third,qmFrez), key=lambda pair: pair[0])]
 
 # Sorting done
 ################
+
+print "sorted lists"
+print "qmRes"
+print qmRes
+print "qmList"
+print qmList
+print "qmChop"
+print qmChop
+print "qmFrez"
+print qmFrez
+
+print " "
+print " "
 
 # OK great, so we've added all of the atoms from the new.pdb into the qm region. 
 # But we're still missing nonpolar hydrogens.
@@ -746,6 +653,7 @@ with open('h.pdb') as Hfile:
             COUNTER += 1
         
 
+
 for idx, ii in enumerate(qmRes): #list of residues, also idx is the current index for qmList
     for idx2, jj in enumerate(Hresiduename): #idx2 is also the index of all of the H lists defined above
         for idx3, kk in enumerate(qmList[idx]): 
@@ -760,6 +668,11 @@ for idx, ii in enumerate(qmRes): #list of residues, also idx is the current inde
 
 # nonpolar hydrogens added to qm region
 ####################################################################
+
+
+print qmRes
+print "qmList:"
+print qmList   
                        
 # Great, all of the info for the input file should now be ready.
 
@@ -789,9 +702,9 @@ for idx, ii in enumerate(qmRes):
         if qmChop[idx][0] == "Don't chop":
             pass
         else:
-            inputChop = inputChop + ' ' + qmChop[idx][0] + ' ' + qmChop[idx][1] + ' HBX 0.7052'
+            inputChop = inputChop + ' ' + qmChop[idx][1] + ' ' + qmChop[idx][0] + ' HBX 0.7052'
             tempChop.append(inputChop)
-            inputFrozen = inputFrozen + ' ' + qmChop[idx][1] + ' HBX'
+            inputFrozen = inputFrozen + ' ' + qmChop[idx][0] + ' HBX'
             tempFrozen.append(inputFrozen)
 
     elif isinstance(qmChop[idx][0], list):
@@ -834,48 +747,97 @@ call('echo "export dmd_cores=%s" >> input' % clusterOptions['slots'], shell=True
 
 ###########################################
 # Let's work on the inConstr file
+# we'll also determine overall charge
 
-inConstrAtompairrel = []
-inConstrStatic = []
+# Let's loop through the residue list to match protonation and deprotonation requests
 
-# Metal atoms need to be frozen
-TERcount = 0
-firstMetal = ""
-with open(pdbFile) as pdbfileagain:
-    for ii in pdbfileagain:
-        if 'TER' in ii:
-            TERcount += 1
-        if ii[12:14].lower() in ["li", "be", "na", "mg", "k", "ca", "sc", "ti", "v", "cr", "mn", "fe", "co", "ni", "cu", "zn", "rb", "sr", "y", "zr", "nb", "mo", "tc", "ru", "pd", "ag", "cd", "cs", "ba", "hf", "ta", "w", "re", "os", "ir", "pt", "au", "hg", "la", "ce", "pr", "nd", "pm", "sm", "eu", "gd", "tb", "dy", "ho", "er", "tm", "yb", "lu"]:
-            inConstrStatic.append("Static %d.*.%s" % (TERcount + 1, ii[12:16].strip()))
-            if firstMetal == "":
-                firstMetal = "%d.*.%s" % (TERcount + 1, ii[12:16].strip())
+allRes = []
+allProtOpt = []
+inConstrProtDeprot = []
 
-######### Metal atoms are now frozen in DMD ####################
+for idx, ii in enumerate(qmResidueList):
+    if len(ii[-1].split("-")) > 1:
+        allRes.append(ii[0].split("-")[0])
+        allRes.append(ii[0].split("-")[0])
+        allProtOpt.append(ii[-1].split("-")[0])
+        allProtOpt.append(ii[-1].split("-")[1])
+    else:
+        allRes.append(ii[0])
+        allProtOpt.append(ii[-1])
+
+for idx, ii in enumerate(allRes):
+    aminoname = ii[0][0:3].upper()
+    aminonum = ii[0][3:]
+    if allProtOpt[idx][0:4] == 'Prot':
+        if aminoname == 'HIS':
+            inConstrProtDeprot.append('Protonate A:%d:ND1' % (aminonum))
+        if aminoname == 'ASP':
+            inConstrProtDeprot.append('Protonate A:%d:OD%s' % (aminonum, allProtOpt[idx][4]))
+        if aminoname == 'SER':
+            inConstrProtDeprot.append('Protonate A:%d:OG' % (aminonum))
+        if aminoname == 'THR':
+            inConstrProtDeprot.append('Protonate A:%d:OG1' % (aminonum))
+        if aminoname == 'ASP':
+            if allProtOpt[idx][4] == 1:
+                inConstrProtDeprot.append('Protonate A:%d:OD1' % (aminonum))
+            elif allProtOpt[idx][4] == 2:
+                inConstrProtDeprot.append('Protonate A:%d:OD2' % (aminonum))
+        if aminoname == 'GLU':
+            if allProtOpt[idx][4] == 1:
+                inConstrProtDeprot.append('Protonate A:%d:OE1' % (aminonum))
+            elif allProtOpt[idx][4] == 2:
+                inConstrProtDeprot.append('Protonate A:%d:OE2' % (aminonum))
+        if aminoname == 'ASN':
+            if allProtOpt[idx][4] == 1:
+                inConstrProtDeprot.append('Protonate A:%d:OD1' % (aminonum))
+            elif allProtOpt[idx][4] == 2:
+                inConstrProtDeprot.append('Protonate A:%d:ND2' % (aminonum))
+        if aminoname == 'GLN':
+            if allProtOpt[idx][4] == 1:
+                inConstrProtDeprot.append('Protonate A:%d:OE1' % (aminonum))
+            elif allProtOpt[idx][4] == 2:
+                inConstrProtDeprot.append('Protonate A:%d:NE2' % (aminonum))
+        if aminoname == 'TYR':
+            inConstrProtDeprot.append('Protonate A:%d:OH' % (aminonum))
+        if aminoname == 'TRP':
+            inConstrProtDeprot.append('Protonate A:%d:NE1' % (aminonum))
+    elif allProtOpt[idx][0:5] == 'DProt':
+        if aminoname == 'ARG':
+            inConstrProtDeprot.append('Deprotonate A:%d:NH1' % (aminonum))
+        elif aminoname == 'HIS':
+            inConstrProtDeprot.append('Deprotonate A:%d:NE1' % (aminonum))
+        elif aminoname == 'LYS':
+            inConstrProtDeprot.append('Deprotonate A:%d:NZ' % (aminonum))
+        elif aminoname == 'CYS':
+            inConstrProtDeprot.append('Deprotonate A:%d:SF' % (aminonum))
+        elif aminoname == 'SEC':
+            inConstrProtDeprot.append('Deprotonate A:%d:SEF' % (aminonum))
+        elif aminoname == 'SER':
+            inConstrProtDeprot.append('Deprotonate A:%d:OG' % (aminonum))
+        elif aminoname == 'THR':
+            inConstrProtDeprot.append('Deprotonate A:%d:OG1' % (aminonum))
+        elif aminoname == 'ASN':
+            inConstrProtDeprot.append('Deprotonate A:%d:ND2' % (aminonum))
+        elif aminoname == 'GLN':
+            inConstrProtDeprot.append('Deprotonate A:%d:NE2' % (aminonum))
+        elif aminoname == 'TYR':
+            inConstrProtDeprot.append('Deprotonate A:%d:OH' % (aminonum))
 
 # We need to know which atoms are in proximity with each of the metals. The script that is referenced will spit out those atoms closest. These be tagged as
 # part of the "qm only" region, i.e. DMD is not allowed to move them (only QM)
-
-# residues attached to metals
 for ii in metalList:
     call("if [ -f metalsaminodist ]; then rm metalsaminodist; fi", shell=True)
-    call("atomstometal %s %s >> metalsaminodist" % (pdbFile, ii.upper()), shell=True)
+    call("atomstometal %s %s >> metalsaminodist" % (pdbFile, ii), shell=True)
 
-resHeldStatic = []
+inConstrStatic = []
 with open('metalsaminodist') as metalDist:
     for ii in metalDist:
         atomStatic = ii.split(" ")[1]
         aminoname = ii.split(" ")[2][0:3]
-        aminonum = ii.split(" ")[2][3:].strip()
-        resHeldStatic.append("%s A%4d" % (aminoname, int(aminonum)))
+        aminonum = ii.split(" ")[2][3:]
         inConstrStatic.append("Static 1.%s.%s" % (aminonum, aminoname))
-        # It may be a good idea to add "AtomPairRel" lines to further ensure DMD does not
-        # tamper disasterously with the qm region, (but still allow some sampling)
 
-for ii in qmRes:
-    if ii.split()[1] == 'A' and ii not in resHeldStatic:
-    # We need to restrict the movement of this qm residue
-        aminonum = ii[5:].replace(" ", "")
-        inConstrAtompairrel.append("AtomPairRel 1.%s.* %s -%f +%f" % (aminonum, firstMetal, DMDoptions['Dispmagnitude'], DMDoptions['Dispmagnitude']))
+######### atoms attached to metals are now frozen in DMD #########
 
 # We should also, by default, leave the substrate as frozen to DMD. The only exception being if the user wanted to cut the substrate manually
 TERcount = 0
@@ -888,6 +850,7 @@ with open(pdbFile) as pdbfileagain:
 
 if substrateCutList == []:
     inConstrStatic.append("Static %d.*.*" % (TERcount + 1))
+
 # if the user did cut the substrate, let's leave static all atoms in the list of qm atoms:
 else:
     for idx, ii in enumerate(qmRes):
@@ -897,21 +860,72 @@ else:
 
 ########## Substrate atoms are now frozen in DMD ###############
 
-# Let's print this stuff to the inConstr file!
+# Metal atoms need to be frozen too
+TERcount = 0
+with open(pdbFile) as pdbfileagain:
+    for ii in pdbfileagain:
+        if 'TER' in ii:
+            TERcount += 1
+        if ii[76:78].lower() in ["li", "be", "na", "mg", "k", "ca", "sc", "ti", "v", "cr", "mn", "fe", "co", "ni", "cu", "zn", "rb", "sr", "y", "zr", "nb", "mo", "tc", "ru", "pd", "ag", "cd", "cs", "ba", "hf", "ta", "w", "re", "os", "ir", "pt", "au", "hg", "la", "ce", "pr", "nd", "pm", "sm", "eu", "gd", "tb", "dy", "ho", "er", "tm", "yb", "lu"]:
+            inConstrStatic.append("Static %d.*.%s" % (TERcount + 1, ii[12:16].strip()))
 
-call('echo " " >> inConstr', shell=True)
+######### Metal atoms are now frozen in DMD ####################
 
-for ii in inConstrProtDeprot:
-    call('echo "%s" >> inConstr' % (ii), shell=True)
+"""
 
-call('echo " " >> inConstr', shell=True)
-for ii in inConstrStatic:
-    call('echo "%s" >> inConstr' % (ii), shell=True)
+printf "\"$metal1 B%4s\" "  $(($numm1-1)) > reslistresidues1 # ^^
+done
+paste <(cat metalsaminodist | awk -F" " '{print $1,$2}') <(cat metalsaminodist | awk -F" " '{print $3}' | tr [A-Z] [a-z]) >> metalsaminodist #gotta be able to search for lower case too
 
-call('echo " " >> inConstr', shell=True)
-for ii in inConstrAtompairrel:
-    call('echo "%s" >> inConstr' % (ii), shell=True)
+# The output of a single run of that loop could look like:
+# ZN1 OE1 GLU471
+# ZN1 NE2 HIS422
+# ZN1 NE2 HIS426
+# ZN1 OE1 glu471
+# ZN1 NE2 his422
+# ZN1 NE2 his426
+# So, we see ZN1 is in close proximity to one of the oxygens on GLU471 and those atoms need to be held as Static to DMD
 
-call('if [ -f qmRegionCharge ]; then rm qmRegionCharge; fi', shell=True)
-call('echo "%d" >> qmRegionCharge' % (charge), shell=True)
+for jj in "${qmresidues[@]}"
+do  
+aminoname=${jj:0:3}
+aminonum=${jj:3:6}
 
+unset status
+unset atombound
+unset metalbound
+unset specificmetal 
+unset metalnumber 
+
+mm=`echo $aminoname | tr [a-z] [A-Z]`
+
+if grep -q "$mm$aminonum" metalsaminodist #This grep command aims to simply give a true statement if the qmresidue appears in the above list
+then
+status=attached
+
+if [ "$considerallfree" == "yes" ]; then status=free; fi
+
+#If we get here, we have an amino acid residue in close proximity to a metal, the following is the actual line that will keep the right atom static:
+atombound=`grep "$mm$aminonum" metalsaminodist | awk -F" " '{print $2}' | sort -u`
+echo "Static 1.$aminonum.$atombound" >> tempstatic
+
+# Ok let's make sure HIS is protonated correctly. I'm assuming delta protonation is done by DMD
+if [ "$atombound" == "ND1" ]; then
+ echo "Deprotonate A:$aminonum:ND1" >> tempDeprot
+ echo "Protonate A:$aminonum:NE2" >> tempProt
+fi
+
+# and let's not forget to label which metal that is:
+specificmetal=`grep "$mm$aminonum" metalsaminodist | awk -F" " '{print $1}' | sort -u`
+metalbound=${specificmetal:0:2}
+metalnumber=$((${specificmetal:2:3}+1))
+# But we're not done yet! if we leave the rest of the residue free for dmd to move, we may get some rotation that would still break the bond between metal/residue
+# Down below, appropriate "AtomPairRel" lines will be added to further ensure DMD does not tamper disasterously with the qm region, but will still allow some sampling
+else
+status=free
+# If we land here, the residue is not likely bound to the metal via tight sigma overlap. The most likely cases are that it is at most providing a hydrogen bond,
+# possibly pi-stacking with something, or otherwise just hanging out waiting its turn. Because it has been considered as part of the qm region, we want the qm forces
+# to maintain being the most important. We will allow this substrate to move a little by adding the AtomPairRel depending on which amino acid it is, but later.
+specificmetal=`cat metalsaminodist | awk -F" " '{print $1}' | head -n +1`
+
+"""

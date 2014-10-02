@@ -30,15 +30,14 @@ DMD options:
   All residues free = true
 
 QM Residues and optional adjustments:
-  HIS32-ASP34N      = FrzDF , ProtDef-ProtDef
+  HIS32N-ASP34      = FrzDF , ProtDef-ProtDef
   SER7              = FrzDF , ProtDef
-  his67             = FrzDF , ProtDef
-  met69             = FrzDF , ProtDef
+  HIS67             = FrzDF , ProtDef
+  MET69             = FrzDF , ProtDef
   SER195            = FrzDF , ProtDef
-  asp172            = FrzDF , ProtDef
+  ASP172            = FrzDF , ProtDef
 
 Custom Substrate cut(s) - one per line:
-  C106 - C109
 
 # Other flags (to the right of equals sign, separate multiple with commas):
 # 
@@ -72,22 +71,22 @@ Custom Substrate cut(s) - one per line:
 #
 # Multi-residue lines will include entire side chains and the backbone, cut
 # between the alpha and the carbonyl carbon (default), between alpha carbon and nitrogen
-# (follow w/ N), or cut the peptide bond (follow w/ P; this is not recommended)
+# (follow w/ N)
 #
-#    +--------------------------+
-#    |    Q M    R E G I O N    |
+#    +-------------------------+
+#    |    Q M   R E G I O N    |
 #    \                         /
 #     \                       /
 #      HIS55             HIS57 
-#        R     O           R     O       
-#        |     ‖           |     ‖      
-# ~N--C--C--N--C--C--N--C--C--N--C--C--N~ 
-#     ‖ ^         |     ‖    ^      |    
-#     O |         R     O    |      R   
-#       |       asp56        |
-#       |                    |
+#  O     R           O     R           O
+#  ‖     |           ‖     |           ‖
+# ~C--N--C--C--N--C--C--N--C--C--N--C--C~ 
+#       ^   ‖     |         ^ ‖     |   
+#       |   O     R         | O     R  
+#       |       asp56       |
+#       |                   |
 #  (cuts here)-----------(to here)
 #
-# his55-his57N [illustrated]
+# his55N-his57 [illustrated]
 #
 #

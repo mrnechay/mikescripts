@@ -1,6 +1,6 @@
 #!/bin/bash
 
-rundetection=n
+rundetection=y
 
 #set -x
 
@@ -46,10 +46,6 @@ currentpath=`pwd`
 qmdmdfolder=`echo $1 | awk -F"." '{print $1}'`
 qmdmdpath=$currentpath/$qmdmdfolder
 filetype=`echo $1 | awk -F"." '{print $NF}'`
-
-reslist=$2
-subcharge=$3
-multiplicity=$4
 
 if [ -z "$2" ]; then
 
@@ -431,10 +427,17 @@ if grep -q "GOOD" qmdmdsetup.log; then
   
   
   echo "See $qmdmdfolder/new.pdb for full protein"
+ 
   echo " "
+
+  if [ -f $qmdmdfolder.qmdmd ]; then 
+   echo "double check your .qmdmd that all options are correct and rerun the script by typing 'setupqmdmd.mike.new name.pdb go'"
+  else
+   cp ~/mikescripts/default.qmdmd ../$qmdmdfolder.qmdmd
+   echo "See the default $qmdmdfolder.qmdmd supplied for you, modify to your liking, and resubmit this script with 'setupqmdmd.mike.new name.pdb go'"
+  fi
  fi
   
- echo "run script again with the QM residues and substrate/metal charge labelled"
  cd ..
  else
  echo "NOT good to go... check the qmdmdsetup.log and .err along with your input to find out what's wrong"
@@ -447,51 +450,54 @@ fi
 # charge and multiplicity of the substrate
 # (The script already accounts for charge
 # additions by the  residues separately)
-# Also, the script can accept .mtm as $5
+# Also, the script can accept .mtm if same name.mtm
 
 if [ $2 ]; then
+ cp $qmdmdfolder.qmdmd $qmdmdfolder/
  cd $qmdmdfolder
+ 
 # cleanup!
  if [ -a inConstr ]; then rm inConstr; fi
  if [ -a genESC.output ]; then rm genESC.output; fi
  if [ -a $qmdmdfolder/Spec1.sh ]; then rm $qmdmdfolder/Spec1.sh; fi
  if [ -a $qmdmdfolder/Spec2.sh ]; then rm $qmdmdfolder/Spec2.sh; fi
 
+multiplicity=`cat $qmdmdfolder.qmdmd | grep "  multiplicity" | awk -F" " '{print $NF}'`
+
 # let's do this! First, the infamous "inC" file
  genESC.linux  ~snedd/bin/DMD/parameter/ new.pdb topparam.list >> inConstr 2>genESC.output
+
+readarray -t METALS < <(cat metals.pdb | awk -F" " '{print $3}' | tr [a-z] [A-Z])
+#redo HIS reprotonation again
+for ii in "${METALS[@]}"; do
+ echo "is it this sed"
+ REStoreprotonate=`atomstometal yay2.pdb $ii | grep "ND1" | awk -F" " '{print $3}' | tr '\n' ',' | sed s/,$/\\\n/g`
+ IFS=',' read -a reprotonatearray <<< "$REStoreprotonate"
+ for ii in "${reprotonatearray[@]}"; do
+  aminoname=${ii:0:3}
+  aminonum=${ii:3:7}
+  echo "Deprotonate A:$aminonum:ND1" >> inConstr
+  echo "Protonate A:$aminonum:NE2" >> inConstr
+# this will run with the pdb_to_pdbDMD.sh script soon
+ done
+done
+
+
  if [ -a $qmdmdfolder/input ]; then rm $qmdmdfolder/input; fi
-# the following is a (pretty lengthy) script which sets up all the the DMD and QM information which links the QM and DMD regions together
-# A lot of assumptions are made here, including no protonation or deprotonation of residues, certain pre-determined chain lengths for res
-# (which still offers some flexibility to the user - calling "GLU64" gives the entire GLU residue up to right before the alpha carbon
-# wheras calling "glu64" gives only the functional group and single carbon/hydrogen cap. I hope this can be expanded to allow other 
-# situations that may come up with systems I have not dealt with, but if anything this gives a good "starting point" where
-# saavy users can add and modify terms further to their liking.
- genQMDMDparameters $2
-# Also output from above is a "changecharge" files which kept track of the changes in overall charge that came with each new residue
- extract_qm.sh new.pdb x.pdb >> qmdmdsetup.log
- chimera_addh.sh x.pdb h.pdb >> qmdmdsetup.log 2>>qmdmdsetup.err
- sed -i 's/1HB / HB2/g' h.pdb
- sed -i 's/2HB / HB3/g' h.pdb
- sed -i 's/1HG / HG2/g' h.pdb
- sed -i 's/2HG / HG3/g' h.pdb
+# the following is a (lengthy) script which sets up all the the DMD and QM information which links the QM and DMD regions together
+# instructions are provided in the default.qmdmd file which was automatically copied if not already supplied
+ genQMDMDparameters.py $qmdmdfolder new.pdb
+# Also output from above is a "qmRegionCharge" file which kept track of the changes in overall charge that came with each new residue
  cd ..
 
 # we need to create two scripts which will correctly pass the metals back and forth from DMD to QM
  readarray -t METALS < <(cat $qmdmdfolder/metals.pdb | awk -F" " '{print $3}' | tr [a-z] [A-Z])
  readarray -t metals < <(cat $qmdmdfolder/metals.pdb | awk -F" " '{print $3}' | tr [A-Z] [a-z])
  Metals=(${metals[@]^})
- echo "sed s/Zn/${Metals[0]}/ < \$1 > _tmp" > $qmdmdfolder/Spec1.sh
- echo "mv _tmp \$1" >> $qmdmdfolder/Spec1.sh
- echo "sed s/${Metals[0]}/Zn/ < \$1 > _tmp" > $qmdmdfolder/Spec2.sh
- echo "mv _tmp \$1" >> $qmdmdfolder/Spec2.sh
+ echo "so_metal1.py \$1" > $qmdmdfolder/Spec1.sh
+ echo "so_metal2.py \$1" > $qmdmdfolder/Spec2.sh
  chmod +x $qmdmdfolder/Spec1.sh
  chmod +x $qmdmdfolder/Spec2.sh
-
-# unfortunately, at this point the script only handles a single type of metal. two Cu ions is fine, but if one were to have
-# a Cu and a Ni, the scripts currently cannot distinuish between them because DMD only wants to see "Zn"
-# since these metals are frozen during DMD, it should be possible to substitute based on position rather than element name going from DMD to QM
-# Conversely, in QM the metals don't necessarily stay still. however, all metals are becoming Zn so that part isn't the issue
-# TL;DR for Spec1, substitute based on position rather than name, Spec2: sed ALL metals to Zn
 
 # Alright, ready for the real QM site making?
  cd $qmdmdfolder
@@ -503,13 +509,9 @@ if [ $2 ]; then
   echo "charge is negative"
  elif [[ $3 == *+* ]]; then
   echo "charge is positive"
- else
-  subcharge=`echo +$3`
  fi
 # below we add to the "changecharge" file our substrate charge. the following bc command gives us the final charge of the system
- echo $subcharge >> $qmdmdfolder/changecharge
- forbc=`cat $qmdmdfolder/changecharge | tr -d '\n'`
- charge=`echo $forbc | bc`
+ charge=`cat $qmdmdfolder/qmRegionCharge`
  echo "charge is $charge" >> $qmdmdfolder/charge
  cd $qmdmdfolder/Template_EO
  if [ -a defineoutput ]; then rm defineoutput; fi
@@ -567,14 +569,6 @@ if [ $2 ]; then
  chmod +x run_calc.sh
  cd ..
 
-
-########### D M D   CORES ###########
- if  [[ $5 ]]; then
-  sed -i "s/export dmd_cores=4/export dmd_cores=$5/g" input
- fi
-#####################################
-
-
 # It all comes down to this, if the following script can successfully convert our new.pdb back then we know QM and DMD steps should be able to talk to each other just fine
  pdb_to_pdbDMD.sh new.pdb test.pdb >> final.log 2>> qmdmdsetup.err
  success=`grep "GOOD TO GO" final.log`
@@ -585,3 +579,4 @@ if [ $2 ]; then
  fi
 
 fi
+
