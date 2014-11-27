@@ -1,0 +1,100 @@
+#!/bin/bash
+
+step=$1
+upto=$2
+export scratch=$3
+
+export MainDir=$PWD
+source QMDMD_Defaults.sh
+source $MainDir/input
+source functions_gen.sh
+
+
+if [ $2 -gt $Iterations ] ; 
+then 
+echo "too many iterations" 
+   qdel $4  
+   sleep 100 
+   exit  
+fi 
+
+
+if [ $step == 0 ];
+then
+   echo  "************************************************"
+   echo  "*                                              *"
+   echo  "*          Starting the DMD procedure          *"
+   echo  "*                                              *"
+   echo  "*                                              *"
+   echo  "************************************************"
+
+   if [ -f Opt.xyz  ]; then rm Opt.xyz ; fi
+   if [ -f qm_opt_energies.dat ]; then rm qm_opt_energies.dat ; fi
+   if [ -f qm_var_energies.dat ]; then rm qm_var_energies.dat ; fi
+   if [ -f scoring_index ]; then rm scoring_index ; fi
+   if [ -f total_movie.pdb ]; then rm total_movie.pdb ; fi
+   if [ -f it_done ]; then rm it_done; fi
+   if [ -f reference_ene ]; then rm reference_ene; fi
+   #if [ -f  ]; then rm ; fi
+
+   cp  new.pdb initial.pdb
+fi
+
+for i in `seq $step  $upto `;
+do
+   echo  "**************************************"
+   echo  "          Iteration" $i
+   echo  "**************************************"
+   
+#  create and move into a new directory for the calculation    
+   newdir=Iteration_$i
+   mkdir $newdir
+
+#  copy the files needed.
+   cp topparam.list  $newdir
+   cp Spec*.sh       $newdir
+   cp *.mol2         $newdir
+   cp new.pdb        $newdir
+   cp inConstr       $newdir
+
+   cd $newdir
+   
+   export IterationDir=$PWD
+
+   cp -r $IterationDir/* $scratch/
+   cd $scratch/
+
+# Adds a timer. Test for stopping turbomole when close to failing. 
+qmdtimer() {
+#sleep 1380m;
+sleep 23h;
+if [ -s "$scratch/Optimization" ]; then
+ echo "Approaching max run time and kill moment, need to collect data before data gets Robinson Crusoed."
+ echo "Making a STOP file to exit Turbomole"
+ touch $scratch/Optimization/STOP;
+fi
+}
+echo "initiating qmdtimer"
+qmdtimer &
+echo "finished qmdtimer"
+
+# run DMD   
+   echo "runDMD.sh start:";date
+   runDMD.sh $i
+   echo "runDMD.sh complete:";date
+   cp new.pdb $MainDir/
+# evaluate the qm energy of each frame   
+
+   echo  "**************************************"
+   echo  "          Iteration" $i
+   echo  "            completed"           
+   echo  "**************************************"
+
+   rm $scratch/ddmat*
+   rm $scratch/dfmata*
+   rm $scratch/errvec*
+   rm $scratch/oldfock*
+   cp -r $scratch/* $IterationDir/
+   rm -rf $scratch/*
+   cd  $MainDir
+done   

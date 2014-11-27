@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Takes argument of a pdb file and as many mutations as one likes in the
+# format A123B, where A is the beginning amino acid, # is the res number,
+# and B is the residue you are mutating to.
+
+# example:
+
+# $ mutateChimera new.pdb F292Y,H50F
+# mutates Phenylalanine 292 to a Tyrosine and Histidine 50 to a Phenylalanine.
+
+pdbFile=$1
+cp $pdbFile $pdbFile.save
+IFS=',' read -a resMutations <<< "$2"
+if [ -f chimera_fixmissing.com ]; then rm chimera_fixmissing.com; fi
+
+
+
+echo "open $pdbFile" > chimera_fixmissing.com
+echo "resrenumber 1 #0" >> chimera_fixmissing.com
+
+for ii in "${resMutations[@]}"; do
+ resNumber="${ii:1:${#ii}-2}"
+ destination=`echo "${ii: -1}"`
+ mutateTo=`echo $destination | tr ‘A-Z’ ‘a-z’ | sed 's/a/ALA\n/g;s/c/CYS\n/g;s/d/ASP\n/g;s/e/GLU\n/g;s/f/PHE\n/g;s/g/GLY\n/g;s/h/HIS\n/g;s/i/ILE\n/g;s/k/LYS\n/g;s/l/LEU\n/g;s/m/MET\n/g;s/p/PRO\n/g;s/r/ARG\n/g;s/q/GLN\n/g;s/n/ASN\n/g;s/s/SER\n/g;s/t/THR\n/g;s/w/TRP\n/g;s/y/TYR\n/g;s/v/VAL\n/g'`
+ 
+ echo "swapaa $mutateTo :$resNumber.a preserve true" >> chimera_fixmissing.com
+done
+echo "write format pdb #0 $pdbFile" >> chimera_fixmissing.com
+echo "close #0" >> chimera_fixmissing.com
+# execute chimera script, this is calling a headless chimera version I have installed
+/u/home/m/mnechay/.local/UCSF-Chimera64-1.8.1/bin/chimera chimera_fixmissing.com > chimeralog.out 2> chimeralog.err
+
+# OK, so chimera mutated it. but CHIMERA also fucks with the rest of the pdb file. let's put it back.
+# Haven't gotten around to this yet
+
+
+# sed 's/ALA/A/g;s/CYS/C/g;s/ASP/D/g;s/GLU/E/g;s/PHE/F/g;s/GLY/G/g;s/HIS/H/g;s/ILE/I/g;s/LYS/K/g;s/LEU/L/g;s/MET/M/g;s/ASN/N/g;s/PRO/P/g;s/GLN/Q/g;s/ARG/R/g;s/SER/S/g;s/THR/T/g;s/VAL/V/g;s/TRP/W/g;s/TYR/Y/g'
+# other way in case I ever want this

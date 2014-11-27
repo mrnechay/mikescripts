@@ -16,11 +16,14 @@
 
 # End freezing section
 
-# get rid of frozen coordinates 
-sed -i -e 's/[0-9]      f/qwertph/g' coord
+# get rid of frozen coordinates
+sed -i -e 's/fe/KEEPSAFE/g' coord
+sed -i -e 's/[0-9]      f /qwertph/g' coord
+sed -i -e 's/[0-9]      f$/qwertph/g' coord
 sed -i 's/      f//g' coord
 sed -i -e 's/ *f//g' coord
 sed -i 's/qwertph/0      f/g' coord
+sed -i -e 's/KEEPSAFE/fe/g' coord
 # end get rid of frozen coordinates
 
 # This section will freeze atoms if it says so in mtm file

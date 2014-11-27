@@ -156,7 +156,7 @@ cat << %EOF% > $runfile
 
   if ( -e pleaseResubmit ) then
     cp remainingscript.sh script.sh
-    bash ~/mikescripts/runturbomole.mine -sub -N \$NSLOTS -t $wall -type $node_type otherscript.sh
+    bash ~/mikescripts/runturbomole.mine -sub -N \$NSLOTS -t $wall otherscript.sh
     rm pleaseResubmit
   endif
 

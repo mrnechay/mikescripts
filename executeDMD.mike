@@ -1,0 +1,176 @@
+#!/bin/bash
+
+#ulimit -s unlimited
+#export OMP_STACKSIZE=16G
+#export OMP_NUMTHREADS=4
+
+set -x
+
+export MainDir=$PWD
+source QMDMD_Defaults.sh
+source $MainDir/input
+source functions_gen.sh
+scratch=$SCRATCH/job_$JOB_ID
+
+cp * $scratch/
+cd $scratch
+
+dmdtimer() {
+
+keepGoing=true
+
+echo "I will wait until I see the movie file. then I'll know it is done"
+
+while [ keepGoing ]; do
+ echo "still waiting..."
+ echo "scratch var is"
+ echo "$scratch"
+ sleep 30
+ if [ -f movie.pdb ]; then
+  echo "whoo! found it"
+  echo "waiting a bit for it to finish..."
+  sleep 180
+  cd /u/scratch/m/mnechay/job_$JOB_ID/
+  for node in node*; do
+   rm $node
+  done
+  
+  for core in core*; do
+   rm $core
+  done
+  
+
+  sleep 300
+  echo "lines in current movie.pdb"
+  rm movie.pdb
+  
+  cp movie $MainDir/Iteration`date +%s`
+  
+  cp new.pdb $MainDir/
+  
+  echo  "**************************************"
+  echo  "          Iteration"
+  echo  "            completed"           
+  echo  "**************************************"
+  
+  # Do we need to copy any more files over?
+  rm -rf $scratch/*
+  cd  $MainDir
+  
+  echo ""
+  echo "script finished at:  "` date `
+  
+# Cleanup after mpi parallel execution
+  rm -rf $scratch
+#
+  submitDMD -sub -N 8 -t 24 1 1
+  source /u/local/bin/qq.sge/qr.runtime
+#
+  echo "qdeleting JOB $JOB_ID"
+  qdel $JOB_ID
+  
+  keepGoing = false
+ fi
+done
+
+}
+
+dmdtimer $$ &
+
+# $2 Idealize the DMD constrains
+# $3 Temperature
+# $4 Heat_x_c 
+# $5 Time
+# $6 Frame save
+
+xDMD=false
+b_restart=false
+b_idealize=$idealize
+f_temp=$Ti
+f_heatxc=$heat_xc
+n_time=$MAX_TIME
+f_movie_dt=$f_movie_dt
+
+echo "b_restart is"
+echo "$b_restart"
+
+if $b_restart ;
+then
+    echo
+    echo "DMD will restart based on the info in the file restart"
+    #echo "I mv restart into state"
+    mv "restart" state
+
+else
+    echo
+    echo "DMD will start from scratch, complex-1.linux will generate the necessary files"
+    
+
+    ###
+    # This utility prepares input files for simulation.
+    # Its input are:
+    # 1 - directory with force-field and topology parameter files
+    # 2 - input protein structure
+    # 3 - input ligand topology file (it references 1 or more ligands structure files)
+    # 4 - cell size
+    # 5 - output file of force field parameters for this system
+    # 6 - output file with initial atom coordinates and velocities
+    # 7 - random seed (optional)
+    # 8 - input file with additional constraints put on atoms (can be empty)
+    # 9 - output file for force field parameters reflecting constraints from input 8.
+    #
+    # This program crashes at the end because of the bug that nobody cares to fix,
+    # because it happens after the output is produced. So ignore it...
+    ###
+    if $b_idealize ;
+    then
+        complex-1.linux -P $parameters -I new.pdb -T topparam.list -D 200 -p param -s state -S 123 -C inConstr  -c outConstr --idealize  2>> dmd.err
+    else
+        complex-1.linux -P $parameters -I new.pdb -T topparam.list -D 200 -p param -s state -S 123 -C inConstr  -c outConstr 2>> dmd.err
+    fi
+fi
+
+
+##e
+# This is the actual simulation program. It takes files produced on previous
+# step as an input, and also needs additional configuration file
+# that specifies output file names, out frequency, temperature, run length, etc.
+# It produces 3 output files:
+# echo - Energy
+# movie - Trajectory
+# restart - Checkpoints
+###
+
+# the input file for DMD is updated here to change temperature etc.
+
+if [ -f start.x ]; then rm start.x; fi
+cat <<EOF >> start.x
+THERMOSTAT               ANDERSON
+T_NEW                    $f_temp
+T_LIMIT                  $f_temp
+HEAT_X_C                 $f_heatxc
+RESTART_FILE             restart
+RESTART_DT               10
+ECHO_FILE                echo
+ECHO_DT                  10
+MOVIE_FILE               movie
+START_TIME               0
+MOVIE_DT                 $f_movie_dt
+MAX_TIME                 $n_time
+EOF
+   
+echo "I'm about to start the actual simulation program"
+pwd
+ls
+   
+if $xDMD ;
+then
+    xDMD.linux -i start.x -s state -p param -c outConstr &>> dmd.err
+else
+    ydmd.linux -i start.x -s state -p param -c outConstr -m $dmd_cores &>> dmd.err
+fi
+
+echo " check dmd.err for eventual errors/warnings "
+complex_M2P.linux $parameters new.pdb topparam.list movie movie.pdb inConstr  &>> dmd.err
+echo
+sleep 3600

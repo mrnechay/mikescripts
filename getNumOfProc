@@ -1,0 +1,3 @@
+#!/bin/bash
+
+cat $PE_HOSTFILE | awk -F" " '{print $2}' | tr '\n' '+' | sed s/+$/\\n/g | bc

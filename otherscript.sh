@@ -10,6 +10,8 @@
 # statements... they will have to be in one line. This is all very against
 # standard style however not sure of another way to get functionality I want.
 
+if [ -f "$SGE_CWD_PATH/pleaseResubmit" ]; then rm $SGE_CWD_PATH/pleaseResubmit; fi
+
 genMFILE
 Ttimer $$
 

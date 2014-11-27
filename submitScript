@@ -1,0 +1,116 @@
+#!/bin/bash
+
+
+
+makefile() {
+
+runfile=`basename $PWD`.sh
+name=`basename $PWD`
+
+
+cat << %EOF% > $runfile
+#!/bin/bash
+#$ -S /bin/bash
+#  job for script built  $(date +%c)
+#
+#
+#  Use current working directory
+#$ -cwd
+#  input           = /dev/null
+#
+# -o means standard output stream
+#$ -o script.joblog.\$JOB_ID
+# 
+# -j y means to merge the standard error stream into the standard 
+# output stream instead of having two separate error and output streams.
+#  error           = Merged with joblog
+#$ -j y
+#
+#####################################################################
+#  PLEASE EDIT FOLLOWING LINE TO CHANGE RESOURCES:
+#####################################################################
+#  Resources requested
+#$ -l h_data=4G,h_rt=5:00:00,exclusive
+#####################################################################
+#
+#& -N "thisNamesTheJob"
+#
+#  Email address to notify
+#$ -M $USER@mail
+#
+#  The below can be anything like -m beasn
+#  with 'beasn' having the following meaning
+# b - beginning of job
+# e - end of job
+# a - job is aborted or rescheduled
+# s - job is suspended
+# n - never
+#  Notify at beginning and end of job
+#$ -m n
+#
+#  Job is not rerunable
+#$ -r n
+
+# Run the job
+#
+  echo ""
+  echo "Job started on:   "\` hostname -s \`
+  echo "Job started at:   "\` date \`
+  echo ""
+#
+
+############################################################################
+# create temporary directory if the job ends prematurely
+# this directory will not be deleted and data can be recovered from the
+# computational node (computational node where job runs is logged in joblog
+# the file):
+############################################################################
+
+  DIR=`pwd`
+  echo $PWD
+  echo $USER
+  echo " "
+
+  MYTEMPDIR=/u/scratch/m/mnechay
+  echo $MYTEMPDIR
+
+  mkdir $SCRATCH/job_\$JOB_ID
+  ls $SCRATCH/job_\$JOB_ID
+  cp $PWD/* $SCRATCH/job_\$JOB_ID
+
+  hostname; pwd # what is this
+
+  cd $SCRATCH/job_\$JOB_ID; pwd
+
+############################################################################
+
+
+############################################################################
+# in what follows give command needed to launch the program such as:
+############################################################################
+  echo "time analyze.py >& $SCRATCH/job\$JOB_ID/job.output\$JOB_ID "
+  time analyze.py >& $MYTEMPDIR/job_\$JOB_ID/job.output\$JOB_ID
+
+############################################################################
+
+
+############################################################################
+# Now move back what you need:
+############################################################################
+
+ hostname; pwd
+ mv $MYTEMPDIR/job_\$JOB_ID/* $PWD
+ rm -r $SCRATCH/job_\$JOB_ID
+ ls -lat $SCRATCH/job_\$JOB_ID
+
+############################################################################
+
+%EOF%
+
+}
+
+makefile
+
+echo "Now just do 'qsub $runfile'"
+
+

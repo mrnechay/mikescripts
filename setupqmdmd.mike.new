@@ -1,6 +1,6 @@
 #!/bin/bash
 
-rundetection=y
+rundetection=n
 
 #set -x
 
@@ -45,6 +45,8 @@ fi
 currentpath=`pwd`
 qmdmdfolder=`echo $1 | awk -F"." '{print $1}'`
 qmdmdpath=$currentpath/$qmdmdfolder
+tempfolder=$qmdmdpath/temp
+
 filetype=`echo $1 | awk -F"." '{print $NF}'`
 
 if [ -z "$2" ]; then
@@ -55,6 +57,7 @@ if [ -z "$2" ]; then
   elif [ "$filetype" == pdb ]; then
     mkdir $qmdmdfolder
     cp $qmdmdfolder.pdb $qmdmdfolder/
+    mkdir $qmdmdpath/temp
   else
     echo "please specify either a pdb file or a valid qmdmd folder"
     exit 0
@@ -108,7 +111,9 @@ if [ -z "$2" ]; then
 
 # Metal section
   echo "TER" >> $qmdmdfolder/yay2.pdb
-  egrep -i "HETATM.*IR|HETATM.*ZN|HETATM.*FE|HETATM.*CU|HETATM.*AG|HETATM.*PT|HETATM.*PD|HETATM.*NI|HETATM.*MG|HETATM.*MN" $qmdmdfolder/$qmdmdfolder.pdb > $qmdmdfolder/metals.pdb
+  egrep -i "HETATM.*IR|HETATM.*ZN|HETATM.*FE|HETATM.*CU|HETATM.*AG|HETATM.*PT|HETATM.*PD|HETATM.*NI|HETATM.*MG|HETATM.*MN|HETATM.*CO|HETATM.*RU|HETATM.*K " $qmdmdfolder/$qmdmdfolder.pdb > $qmdmdfolder/metals.pdb
+# ^ Be more specific, it is grabbing HETATM.*UNK
+
 
 # Throughout setup, metals such as IR are referenced as IR (PDB code), "Ir" (as in at the end of the line), and "ir" (TURBOMOLE takes atom input in this way)
   readarray -t METALS < <(cat $qmdmdfolder/metals.pdb | awk -F" " '{print $3}' | tr [a-z] [A-Z])
@@ -119,16 +124,29 @@ if [ -z "$2" ]; then
   COUNTER=1
   metalcount=`wc -l $qmdmdfolder/metals.pdb | awk -F" " '{print $1}'`
   while [[ "$COUNTER" -le "$metalcount" ]]; do
+   if [[ "${#METALS[$(($COUNTER-1))]}" == 2 ]]; then #fixing a potential issue with single character
     cat $qmdmdfolder/metals.pdb \
       | head -n +$COUNTER | tail -1 \
-      | awk 'length(FNR)==1{print substr($0,1,7), "  "FNR, substr($0,13,length($0))} length(FNR)==2{print substr($0,1,6), "  "FNR, substr($0,13,length($0))}' \
+      | awk '{print substr($0,1,7), "  "'$COUNTER', substr($0,13,length($0))}' \
       | head -n +1 \
       | awk 'length($0)>70{$0=substr($0,1,17)"'${METALS[$(($COUNTER-1))]}$COUNTER' B   '$COUNTER'"substr($0,27,length($0))}1' \
       | sed 's/'${METALS[$(($COUNTER-1))]}' *$/Zn/g' \
       | sed 's/'${metals[$(($COUNTER-1))]}' *$/Zn/g' \
       | sed 's/'${Metals[$(($COUNTER-1))]}' *$/Zn/g' >> $qmdmdfolder/yay2.pdb
+   else
+    cat $qmdmdfolder/metals.pdb \
+      | head -n +$COUNTER | tail -1 \
+      | awk 'length(FNR)==1{print substr($0,1,7), "  "FNR, substr($0,13,length($0))} length(FNR)==2{print substr($0,1,6), "  "FNR, substr($0,13,length($0))}' \
+      | head -n +1 \
+      | awk 'length($0)>70{$0=substr($0,1,17)"'${METALS[$(($COUNTER-1))]}0$COUNTER' B   '$COUNTER'"substr($0,28,length($0))}1' \
+      | sed 's/'${METALS[$(($COUNTER-1))]}' *$/Zn/g' \
+      | sed 's/'${metals[$(($COUNTER-1))]}' *$/Zn/g' \
+      | sed 's/'${Metals[$(($COUNTER-1))]}' *$/Zn/g' >> $qmdmdfolder/yay2.pdb
+   fi
 
     if [ -a $qmdmdfolder/metal$COUNTER.pdb ]; then rm $qmdmdfolder/metal$COUNTER.pdb; fi
+    
+   if [[ "${#METALS[$(($COUNTER-1))]}" == 2 ]]; then
     cat $qmdmdfolder/metals.pdb \
       | head -n +$COUNTER \
       | tail -1 \
@@ -138,7 +156,17 @@ if [ -z "$2" ]; then
       | sed 's/'${METALS[$(($COUNTER-1))]}' *$/Zn/g' \
       | sed 's/'${metals[$(($COUNTER-1))]}' *$/Zn/g' \
       | sed 's/'${Metals[$(($COUNTER-1))]}' *$/Zn/g' >> $qmdmdfolder/metal$COUNTER.pdb
-    
+   else
+    cat $qmdmdfolder/metals.pdb \
+      | head -n +$COUNTER \
+      | tail -1 \
+      | awk 'length(FNR)==1{print substr($0,1,7), "  "FNR, substr($0,13,length($0))} length(FNR)==2{print substr($0,1,6), "  "FNR, substr($0,13,length($0))}' \
+      | head -n +1 \
+      | awk 'length($0)>70{$0=substr($0,1,17)"'${METALS[$(($COUNTER-1))]}0$COUNTER' B   '$COUNTER'"substr($0,28,length($0))}1' \
+      | sed 's/'${METALS[$(($COUNTER-1))]}' *$/Zn/g' \
+      | sed 's/'${metals[$(($COUNTER-1))]}' *$/Zn/g' \
+      | sed 's/'${Metals[$(($COUNTER-1))]}' *$/Zn/g' >> $qmdmdfolder/metal$COUNTER.pdb
+   fi
     babel $qmdmdfolder/metal$COUNTER.pdb $qmdmdfolder/metal$COUNTER.mol2 2>> $qmdmdfolder/babel.err
 
 # Let's check to make sure babel worked:
@@ -151,17 +179,22 @@ if [ -z "$2" ]; then
       exit 0
     fi
 
-  echo 'MOL     '${METALS[$(($COUNTER-1))]}$COUNTER'     ./metal'$COUNTER'.mol2' >> $qmdmdfolder/topparam.list
-  echo "TER" >> $qmdmdfolder/yay2.pdb
+  if [[ "${#METALS[$(($COUNTER-1))]}" == 2 ]]; then
+   echo 'MOL     '${METALS[$(($COUNTER-1))]}$COUNTER'     ./metal'$COUNTER'.mol2' >> $qmdmdfolder/topparam.list
+   echo "TER" >> $qmdmdfolder/yay2.pdb
+  else
+   echo 'MOL     '${METALS[$(($COUNTER-1))]}0$COUNTER'     ./metal'$COUNTER'.mol2' >> $qmdmdfolder/topparam.list
+   echo "TER" >> $qmdmdfolder/yay2.pdb
+  fi
   COUNTER=$(($COUNTER + 1))  
   done
 
 # metal.pdb files should be setup, and we should now be ready to add anything else, primarily our substrate, i.e., all HETATM entries that weren't metals or solvent.
 
-# greps just the substrate lines to the sub.pdb file
-  egrep -v " IR | FE | CU | ZN | AG | PT | PD | NI | MN | CO | RU " $qmdmdfolder/$qmdmdfolder.pdb \
+# greps just the substrate lines to the sub.pdb file. Add more metals if you need them.
+  egrep -v " IR | FE | CU | ZN | AG | PT | PD | NI | MN | CO | RU | K " $qmdmdfolder/$qmdmdfolder.pdb \
     | egrep "^HETATM" \
-    | awk 'length(FNR)==1{print substr($0,1,7), "  "FNR, substr($0,13,length($0))} length(FNR)==2{print substr($0,1,6), "  "FNR, substr($0,13,length($0))}' \
+    | awk 'length(FNR)==1{print substr($0,1,7), "  "FNR, substr($0,13,length($0))} length(FNR)==2{print substr($0,1,6), "  "FNR, substr($0,13,length($0))} length(FNR)==3{print substr($0,1,6), " "FNR, substr($0,13,length($0))}' \
     | awk 'length($0)>70{$0=substr($0,1,17)"SUB B   '$COUNTER'"substr($0,27,length($0))}1' >> $qmdmdfolder/sub.pdb
 
   if [ -s $qmdmdfolder/sub.pdb ]; then
@@ -212,7 +245,7 @@ if [ -z "$2" ]; then
 #echo "ENDMDL" >> $qmdmdfolder/yay2.pdb
 
 # At this point, we only still need to define the unnatural amino acids, since DMD wouldn't know what to do with them. This is done with the topparam.list
-# This actually asn't been successful because DMD will fail when their is an unnatural residue, there must be a way around that!
+# This actually hasn't been successful because DMD will fail when their is an unnatural residue, there must be a way around that!
 # The following should at least set it up how it should be (I would think) all we'd need are DMD parameters for the atoms maybe
 sounnatural=`cat $qmdmdfolder/yay2.pdb | egrep "^ATOM" | awk -F" " '{print $4}' | sort -u | egrep -v "ALA|ARG|ASN|ASP|CYS|GLN|GLU|GLY|HIS|ILE|LEU|LYS|MET|PHE|PRO|SER|THR|TRP|TYR|VAL" | tr "\n" "," | sed s/,$//g`
 IFS=',' read -a sounnaturalarray <<< "$sounnatural"
@@ -310,7 +343,7 @@ success=`grep "GOOD TO GO" qmdmdsetup.log`
 # this, so let's do that before shouting segfault at user
 
 if grep -q "Segmentation fault" qmdmdsetup.err; then
- echo "DMD glitched - it threw a Segmenation fault from pdb_to_pdbDMD.sh. It is a little finicky and this happens rarely when it doesn't like the atom order. Let me see if I can fix it..."
+ echo "I'm trying to fix a segfault DMD randomly throws. Goddammit, DMD."
  mv sub.mol2 _sub.mol2
  cat <(cat _sub.mol2 | grep -B 1000 BOND ) <(cat _sub.mol2 | grep -A 1000 BOND | tail -n +2 | sort -n -k 2) > sub.mol2
  rm _sub.mol2
@@ -318,7 +351,7 @@ if grep -q "Segmentation fault" qmdmdsetup.err; then
  pdb_to_pdbDMD.sh initial.pdb new.pdb >> qmdmdsetup.log 2>> qmdmdsetup.err
  if grep -q "GOOD" qmdmdsetup.log; then
   sleep 1
-  echo "Fixed it!"
+  echo "Fixed it! It didn't like the order of atoms, not that it matters."
  fi
 fi
 
@@ -352,10 +385,13 @@ success=`grep "GOOD TO GO" qmdmdsetup.log`
 
 ############# END HACKY-NESS ###############
 
-# issues the user would have to fix
+# issues for the user would have to fix
 if [[ ! $success ]]; then
  if grep -q "Can not read forcefield file" debug1; then
   echo "hmm, check protonation state of your substrate. dmd doesn't like it. you may need to give it extra protons then leave those out of the qm region list"
+  echo "Example: If you want a hydroxide in your system, put in water instead and just change the input #list to not include the extra hydrogen."
+# Script idea: if we detect this error, we could look for hydroxides or peroxides ourselves (by referencing the bond table), protonate them and then save
+# the information so genQMDMDparameters.py won't include that extra H
  fi
 fi
 
@@ -384,8 +420,8 @@ if grep -q "GOOD" qmdmdsetup.log; then
   for ii in "${subs[@]}"; do
    if [[ "$ii" != "SUB" ]]; then
 # metals get a shorter cutoff than the whole substrate, this can be changed however I just figure this section is just here to detect bonded residues
-    measurepdb new.pdb $ii 3 | awk -F" " '{print $1}' | sort -u > metalreslist
-    echo "The following residues were found within 3 Angstroms of metal $ii"
+    measurepdb new.pdb $ii 3.5 | awk -F" " '{print $1}' | sort -u >> metalreslist
+    echo "The following residues were found within 3.5 Angstroms of metal $ii"
     cat metalreslist
     echo " "
     metalreslist=`cat metalreslist | tr '\n' '|' | sed -e s/\|$//g`
@@ -430,11 +466,21 @@ if grep -q "GOOD" qmdmdsetup.log; then
  
   echo " "
 
-  if [ -f $qmdmdfolder.qmdmd ]; then 
+  echo "#####################"
+  echo "# ! S U C C E S S ! #"
+  echo "#####################"
+  echo " "
+  if [ -f ../$qmdmdfolder.qmdmd ]; then 
    echo "double check your .qmdmd that all options are correct and rerun the script by typing 'setupqmdmd.mike.new name.pdb go'"
   else
-   cp ~/mikescripts/default.qmdmd ../$qmdmdfolder.qmdmd
+   cp /u/home/m/mnechay/mikescripts/default.qmdmd ../$qmdmdfolder.qmdmd
    echo "See the default $qmdmdfolder.qmdmd supplied for you, modify to your liking, and resubmit this script with 'setupqmdmd.mike.new name.pdb go'"
+  if [ -f ../$qmdmdfolder.mtm ]; then
+   echo "double check your .mtm that all options are correct"
+  else
+   cp /u/home/m/mnechay/mikescripts/defaultqmdmd.mtm ../$qmdmdfolder.mtm
+   echo "See the default $qmdmdfolder.mtm supplied for you, modify to your liking, and resubmit this script with 'setupqmdmd.mike.new name.pdb go'"
+  fi
   fi
  fi
   
@@ -453,6 +499,15 @@ fi
 # Also, the script can accept .mtm if same name.mtm
 
 if [ $2 ]; then
+
+ if [ -d $qmdmdfolder ]; then
+  :
+ else
+  echo "Please run this script with only calling the pdb file to run QM/DMD on."
+  echo "After that, then run setupqmdmd.mike.new"
+  exit 0
+ fi
+
  cp $qmdmdfolder.qmdmd $qmdmdfolder/
  cd $qmdmdfolder
  
@@ -462,25 +517,27 @@ if [ $2 ]; then
  if [ -a $qmdmdfolder/Spec1.sh ]; then rm $qmdmdfolder/Spec1.sh; fi
  if [ -a $qmdmdfolder/Spec2.sh ]; then rm $qmdmdfolder/Spec2.sh; fi
 
-multiplicity=`cat $qmdmdfolder.qmdmd | grep "  multiplicity" | awk -F" " '{print $NF}'`
+# re-initialize some variables!
+ readarray -t METALS < <(cat metals.pdb | awk -F" " '{print $3}' | tr [a-z] [A-Z])
+ readarray -t metals < <(cat metals.pdb | awk -F" " '{print $3}' | tr [A-Z] [a-z])
+ Metals=(${metals[@]^})
+ multiplicity=`cat $qmdmdfolder.qmdmd | grep "  multiplicity" | awk -F" " '{print $NF}'`
 
 # let's do this! First, the infamous "inC" file
  genESC.linux  ~snedd/bin/DMD/parameter/ new.pdb topparam.list >> inConstr 2>genESC.output
+ echo " " >> inConstr
 
-readarray -t METALS < <(cat metals.pdb | awk -F" " '{print $3}' | tr [a-z] [A-Z])
 #redo HIS reprotonation again
-for ii in "${METALS[@]}"; do
- echo "is it this sed"
- REStoreprotonate=`atomstometal yay2.pdb $ii | grep "ND1" | awk -F" " '{print $3}' | tr '\n' ',' | sed s/,$/\\\n/g`
- IFS=',' read -a reprotonatearray <<< "$REStoreprotonate"
- for ii in "${reprotonatearray[@]}"; do
-  aminoname=${ii:0:3}
-  aminonum=${ii:3:7}
-  echo "Deprotonate A:$aminonum:ND1" >> inConstr
-  echo "Protonate A:$aminonum:NE2" >> inConstr
-# this will run with the pdb_to_pdbDMD.sh script soon
+ for ii in "${METALS[@]}"; do
+  REStoreprotonate=`atomstometal yay2.pdb $ii | grep "ND1" | awk -F" " '{print $3}' | tr '\n' ',' | sed s/,$/\\\n/g`
+  IFS=',' read -a reprotonatearray <<< "$REStoreprotonate"
+  for jj in "${reprotonatearray[@]}"; do
+   aminoname=${jj:0:3}
+   aminonum=${jj:3:7}
+   echo "Deprotonate A:$aminonum:ND1" >> inConstr
+   echo "Protonate A:$aminonum:NE2" >> inConstr
+  done
  done
-done
 
 
  if [ -a $qmdmdfolder/input ]; then rm $qmdmdfolder/input; fi
@@ -488,14 +545,57 @@ done
 # instructions are provided in the default.qmdmd file which was automatically copied if not already supplied
  genQMDMDparameters.py $qmdmdfolder new.pdb
 # Also output from above is a "qmRegionCharge" file which kept track of the changes in overall charge that came with each new residue
+
+###### N E W   F L A G   11/25/14 #######
+
+ if [ "$2" == "fixClashes" ]; then
+# This is a flag that will tell the script to run a very short DMD run that will fix clashes between the residues and substrate.
+# this could be a problem in docking manually where a residue hidden from view in, say, Chimera, actually clashes with substrate.
+# Only use this option during a qrsh session!
+  if [ -f ./input2 ]; then rm ./input2; fi
+  mv input _input
+  cat _input \
+   | sed s/dmd_cores=.*/dmd_cores=1/g \
+   | sed s/MAX_TIME=.*/MAX_TIME=50/g \
+   | sed s/n_cluster=.*/n_cluster=1/g \
+   | sed s/f_movie_dt=.*/f_movie_dt=1/g > input
+  mv inConstr _inConstr
+  cat _inConstr | grep -v AtomPairRel > inConstr
+  PWD=`pwd`
+  executeDMD.mike.qrsh $PWD
+# original input and inConstr saved as _input and _inConstr. Short DMD will run, let's
+  tac movie.pdb \
+   | tail -n +2 \
+   | grep -m 1 -B 100000 "ENDMDL" \
+   | tac \
+   | tail -n +2 > _movie.pdb
+  echo "ENDMDL" >> _movie.pdb
+  mv _movie.pdb new.pdb
+  mv _input input
+  mv _inConstr inConstr
+ fi
+
+# Let's update the h.pdb from that simulation
+ rm x.pdb
+ rm hi.pdb
+ extract_qm.sh new.pdb x.pdb >> qmdmdsetup.log
+ chimera_addh.sh x.pdb h.pdb >> qmdmdsetup.log 2>>qmdmdsetup.err
+
+ addMissingH.py #this script spits out "input2" which has an updated #list in case a hydrogen was missed before
+ if [ -f newInput ]; then rm newInput; fi
+ #now let's plug in the new #list entries:
+ cat input | grep "reslist" >> newInput
+ echo " " >> newInput
+ cat input2 >> newInput
+ cat input | grep -v "reslist" | grep -v '#list' >> newInput
+
+ mv newInput input
+
  cd ..
 
 # we need to create two scripts which will correctly pass the metals back and forth from DMD to QM
- readarray -t METALS < <(cat $qmdmdfolder/metals.pdb | awk -F" " '{print $3}' | tr [a-z] [A-Z])
- readarray -t metals < <(cat $qmdmdfolder/metals.pdb | awk -F" " '{print $3}' | tr [A-Z] [a-z])
- Metals=(${metals[@]^})
  echo "so_metal1.py \$1" > $qmdmdfolder/Spec1.sh
- echo "so_metal2.py \$1" > $qmdmdfolder/Spec2.sh
+ echo "so_metal2_mike.py \$1" > $qmdmdfolder/Spec2.sh
  chmod +x $qmdmdfolder/Spec1.sh
  chmod +x $qmdmdfolder/Spec2.sh
 
@@ -524,10 +624,12 @@ done
   # This is currently untested, but .mtm files are Turbomole input files I made for use with another script
   # it would be much easier to set up the turbomole templates this way, otherwise the script will
   # basically run define with very basic defaults
-  echo "oh, you have an mtm file for me? thank you! We'll use those Turbomole settings"
+  echo "Loading TURBOMOLE settings from .mtm file"
   cp ../../$qmdmdfolder.mtm ./chop.mtm
-  sed -i "s/.*charge.*/  charge                = $charge/g" ./chop.mtm
-  sed -i "s/.*multiplicity.*/  multiplicity          = $4/g" ./chop.mtm
+  echo "  charge                = $charge" >> ./chop.mtm
+  echo "  multiplicity          = $multiplicity" >> ./chop.mtm
+#  sed -i "s/.*charge.*/  charge                = $charge/g" ./chop.mtm
+#  sed -i "s/.*multiplicity.*/  multiplicity          = $4/g" ./chop.mtm
   cp ../chop.xyz ./chop.xyz
   performturbomole chop.xyz
   newfolder=`echo */ | sed s:/::g`
@@ -565,7 +667,7 @@ done
  cp -R Template_EO/ Template_Opt/
  cd ./Template_Opt
  rm run_calc.sh
- echo "jobex -c 500 -ri -energy 4 -gcart 1 -gexp 2" > run_calc.sh
+ echo "jobex -c 500 -ri -energy 3 -gcart 1 -gexp 2" > run_calc.sh
  chmod +x run_calc.sh
  cd ..
 

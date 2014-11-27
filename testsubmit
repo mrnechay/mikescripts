@@ -1,0 +1,27 @@
+#!/bin/bash
+#
+#  SGE job for script built  $(date +%c)
+#  Resources requested
+#$ -pe mpich 4
+#$ -l h_data=4G,time=4:00:00,exclusive
+
+#  Name of application for log
+#$ -v QQAPP=openmpi
+
+#  Email address to notify
+#$ -M $USER@mail
+#  Notify when job is aborted
+#$ -m a
+#  Job is not rerunable
+#$ -r n
+
+#  if the following line starts with "#$", your environment variables are used by SGE
+#$ -V
+
+  set global_scratch = $SCRATCH/job_$JOB_ID
+  mkdir $global_scratch
+  cp $DIR/* $global_scratch
+  cp $global_scratch/*.pdb $DIR
+  cat $global_scratch/*.pdb > $DIR/newfile.pdb 
+
+  exit (0)

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-rundetection=n
+rundetection=y
 
 #set -x
 
@@ -163,7 +163,7 @@ if [ -z "$2" ]; then
 # metal.pdb files should be setup, and we should now be ready to add anything else, primarily our substrate, i.e., all HETATM entries that weren't metals or solvent.
 
 # greps just the substrate lines to the sub.pdb file
-  egrep -v " IR | FE | CU | ZN | AG | PT | PD | NI | MN | CO | RU " $qmdmdfolder/$qmdmdfolder.pdb \
+  egrep -v " IR | FE | CU | ZN | AG | PT | PD | NI | MN | CO | RU | K " $qmdmdfolder/$qmdmdfolder.pdb \
     | egrep "^HETATM" \
     | awk 'length(FNR)==1{print substr($0,1,7), "  "FNR, substr($0,13,length($0))} length(FNR)==2{print substr($0,1,6), "  "FNR, substr($0,13,length($0))}' \
     | awk 'length($0)>70{$0=substr($0,1,17)"SUB B   '$COUNTER'"substr($0,27,length($0))}1' >> $qmdmdfolder/sub.pdb

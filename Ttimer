@@ -6,7 +6,7 @@ Hscratchdir=$TURBOTMPDIR
 Horigindir=$SGE_CWD_PATH
 
 time_requested=`cat time_requested`
-time_to_quit=$(($time_requested-1))\h
+time_to_quit=$(($time_requested-2))\h
 
 sleep $time_to_quit;
 if [ -s "$Hscratchdir/GEO_OPT_RUNNING" ]; then
@@ -25,9 +25,14 @@ fi
 
 if [[ "$currentstep" == "numforce" ]]; then
  while [ -f "$Hscratchdir/numforce/stop" ]; do
-  : #This while loop will make it wait until Turbomole has successfully stopped the run
+  if grep -q "END OF NumForce" $Hscratchdir/numforce.out; then
+   rm $Hscratchdir/numforce/stop
+  else
+   rm $Hscratchdir/numforce/KraftWerk/lock*
+   rm $Hscratchdir/numforce.out
+  fi  #This while loop will make it wait until Turbomole has successfully stopped the run
+      #If NumForce is told to stop but actually finished, it does not remove stop itself
  done
-
  sleep 30
  kill $1 #This is the process id of the other script that was submitted to Hoffman.
          #Having found the "pleaseResubmit" file, it should just be sleeping waiting to be killed by this

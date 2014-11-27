@@ -2,26 +2,11 @@
 #                               #
 #           TURBOMOLE           #
 #         input by mike         #
+#     (only qm/dmd options)     #
 #                               #
 #################################
 
 # answer all yes/no with y/n
-#################################
-
-Basic cluster options:
-  slots			= 8
-  node_type             = 8
-  time			= 24
-  exclusive		= y
-
-Basic calculation options:
-  type			= opt
-  charge		= 0
-  multiplicity		= 1
-
-# Calculation types available:
-# sp, opt, ts, force, optforce,
-# optNumForce, tsNumForce
 #################################
 
 Level of theory:
@@ -36,7 +21,6 @@ TS options (ignore if not):
   troublesome TS search	= n
 
 Other options to deal with troublesome calculations:
-  scf convergence               = 7
   loosen convergence criteria	= n
   weight derivatives		= y
   gridsize			= m4
@@ -52,14 +36,11 @@ Memory:
   maxcor		= 3000
 
 COSMO:
-  cosmo			= n
-  dielectric constant	= 80
+  cosmo			= y
+  dielectric constant	= 4
 
 Other options:
   nbo			= n
 
 other DFT options:
   marij			= y
-
-Freeze atoms:
-# freeze		= 12,14

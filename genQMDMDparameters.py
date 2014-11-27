@@ -9,6 +9,7 @@ import copy
 import re
 from operator import itemgetter
 import sys
+import json
 
 qmdmdInput = "default.qmdmd"
 pdbFile = "try.pdb"
@@ -44,7 +45,10 @@ allResFree = False
 
 qmResidueList = []
 substrateCutList = []
-
+metalExcludeList = []
+sidechainExcludeList = []
+metalExclude = False
+sidechainExclude = False
 
 # Sections of input file
 cutSection = False
@@ -53,10 +57,22 @@ substrateCut = False
 # following loop brings all options from the input file into memory
 with open(qmdmdInput) as infile:
     for line in infile:
+        if 'END QM/DMD PARAMATERS' in line.upper():
+            break
         if line[0] == "#" or not line or line.isspace():
             pass
+        elif sidechainExclude:
+            sidechainExcludeList.append(line.strip().replace(" ", ""))
+        elif metalExclude:
+            if "Exclude the following sidechain" in line:
+                sidechainExclude = True
+            else:
+                metalExcludeList.append(line.strip().replace(" ", "").split('='))
         elif substrateCut:
-            substrateCutList.append(line.strip().replace(" ", "").split('-'))
+            if "Exclude the following metals" in line:
+                metalExclude = True
+            else:
+                substrateCutList.append(line.strip().replace(" ", "").split('-'))
         elif cutSection:
             if "Custom " in line:
                 substrateCut = True
@@ -84,11 +100,11 @@ with open(qmdmdInput) as infile:
             elif "dt" in line:
                 DMDoptions['Moviedt'] = line.split()[-1]
             elif "DMD time steps" in line:
-                DMDoptions['Timesteps'] = line.split()[-1]            
+                DMDoptions['Timesteps'] = line.split()[-1]
             elif "Max Iteration" in line:
-                DMDoptions['MaxIter'] = line.split()[-1]            
+                DMDoptions['MaxIter'] = line.split()[-1]
             elif "Equilibrate" in line:
-                DMDoptions['Equilibrate'] = line.split()[-1]       
+                DMDoptions['Equilibrate'] = line.split()[-1]
             elif "Discard" in line:
                 DMDoptions['Discard'] = line.split()[-1]
             elif "Converge" in line:
@@ -103,8 +119,6 @@ with open(qmdmdInput) as infile:
             elif "QM Residues" in line:
                 cutSection = True
 
-
-
 # Let's first loop through the residue list to match protonation and deprotonation requests
 
 # The previous script, setupqmdmd.mike, recognized incorrect HIS protonation and corrected it.
@@ -114,10 +128,13 @@ allRes = []
 allProtOpt = []
 inConstrProtDeprot = []
 
-with open('inConstr') as inConstrFile:
-    for ii in inConstrFile:
-        if 'Protonate' in ii or 'Deprotonate' in ii:
-            inConstrProtDeprot.append(ii)
+#code refactored to not need below
+#with open('inConstr') as inConstrFile:
+#    for ii in inConstrFile:
+#        if 'Protonate' in ii or 'Deprotonate' in ii:
+#            print 'found protonation entry'
+#            print ii
+#            inConstrProtDeprot.append(ii)
 
 # HIS correction has been loaded. On to user options
 
@@ -189,14 +206,22 @@ for idx, ii in enumerate(allRes):
         elif aminoname == 'TYR':
             inConstrProtDeprot.append('Deprotonate A:%d:OH' % (aminonum))
 
-call("pdb_to_pdbDMD.sh %s _temp.pdb >> qmdmdsetup.log 2>> qmdmdsetup.err" % (pdbFile), shell=True)
-call("mv _temp.pdb %s" % (pdbFile), shell=True)
-call("sed -i 's/Eh/ H/g' %s" % (pdbFile), shell=True)
+
+#I used to have the following lines to ensure a pdb file was DMD-compatible. BUT if following
+# setupqmdmd.mike.new, it SHOULD be DMD-compatible at this point.
+# Strangely, these lines give errors sometimes when an inConstr is present which is the step
+# right before this one. i.e., even if pdb_to_pdbDMD.sh was successful at end of the first
+# stage of setupqmdmd.mike, the generation of the inConstr file may break that script.
+# in my test case, a zinc protein gave "atom overlap" errors for atom 5202 <-> 5202
+# I have no idea why pdb_to_pdbDMD.sh was checking if the same atom overlaps with itself,
+# but once the inConstr file is complete with Static terms for that metal, the problem goes
+# away. very strange.
+#call("pdb_to_pdbDMD.sh %s _temp.pdb >> qmdmdsetup.log 2>> qmdmdsetup.err" % (pdbFile), shell=True)
+#call("cp _temp.pdb %s" % (pdbFile), shell=True)
+#call("sed -i 's/Eh/ H/g' %s" % (pdbFile), shell=True)
 
 ####### Protonation and Deprotonation requests fulfilled ######################
 
-call('babel %s pdb.mol2 2> /dev/null' % (pdbFile), shell=True)
-mol2file = "pdb.mol2"
 
 def getBondList(fileToDo):
 ###############################################################################
@@ -204,7 +229,7 @@ def getBondList(fileToDo):
 # While we could determine them based on pdb name, the format isn't consistent
 # The mol2 file has a bond table, but it is in an inconvenient format. Fixing:
 
-    babelCall = 'babel %s pdb.mol2 2> /dev/null' % (fileToDo)
+    babelCall = 'babel %s pdb.mol2 2> qmdmdsetup.err' % (fileToDo)
     
     call(babelCall, shell=True)
     mol2file = "pdb.mol2"
@@ -279,14 +304,6 @@ bondlist = getBondList(pdbFile)
 # Bond table now in memory
 ##########################
 
-# Let's now define elementlist which gives element name for each (atomserialnumber - 1)
-
-elementlist = []
-with open(pdbFile) as proteinfile:
-    for row in proteinfile:
-        if "ATOM" in row.split(" ")[0] or "HETATM" in row.split(" ")[0]:
-            elementlist.append(row[76:78])
-
 
 ######################################################
 # The following loops brings the pdb file into memory:
@@ -333,10 +350,10 @@ with open(pdbFile) as proteinfile:
 
 # Initialize variables that carry the information for input lists:
 
-qmRes = [None] * 100
-qmList = [None] * 100
-qmChop = [None] * 100
-qmFrez = [None] * 100
+qmRes = [None] * 10000
+qmList = [None] * 10000
+qmChop = [None] * 10000
+qmFrez = [None] * 10000
 
 
 # resCounter goes up +1 for every residue in the list. We will now cycle through those and add all of the atoms, their chopped and frozen components to the above lists:
@@ -366,8 +383,8 @@ for ii in qmResidueList:
 
 
             for jj in atomserialnospaces:
-                if re.match('%s.*%s ' % (aminoname, aminonum), # regex match the input with the pdb file
-                            '%s A *%s ' % (residuename[jj-1], residuesequencenumber[jj-1]), re.IGNORECASE): 
+                if re.match('%s [A-Z] *%s ' % (aminoname, aminonum), # regex match the input with the pdb file
+                            '%s %s%s ' % (residuename[jj-1], chainidentifier[jj-1], residuesequencenumber[jj-1]), re.IGNORECASE): 
                     qmRes[resCounter] = '%s %s%s' % (residuename[jj-1], chainidentifier[jj-1], residuesequencenumber[jj-1])
                     # ^ I put this here so that it only adds a residue to the list if it actually exists in the protein
                     if atomname[jj-1].replace(" ", "") not in ["N", "O", "C", "HN", "CA"]:
@@ -384,18 +401,18 @@ for ii in qmResidueList:
             qmList[resCounter] = [] #initialize list of atoms to include in QM region
             qmChop[resCounter] = []
 
-            if aminoname == 'ARG':
+            if aminoname == 'arg':
                 charge += 1
-            if aminoname == 'LYS':
+            if aminoname == 'lys':
                 charge += 1
-            if aminoname == 'ASP':
+            if aminoname == 'asp':
                 charge -= 1
-            if aminoname == 'GLU':
+            if aminoname == 'glu':
                 charge -= 1
 
             for ii in atomserialnospaces:
-                if re.match('%s.*%s ' % (aminoname, aminonum), # here we just need to find the alpha carbon so we can bond-walk from there
-                            '%s A *%s ' % (residuename[ii-1], residuesequencenumber[ii-1]), re.IGNORECASE) and atomname[ii-1] == " CA ":
+                if re.match('%s [A-Z] *%s ' % (aminoname, aminonum), # here we just need to find the alpha carbon so we can bond-walk from there
+                            '%s %s%s ' % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1]), re.IGNORECASE) and atomname[ii-1] == " CA ":
 
                     qmRes[resCounter] = '%s %s%s' % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1])
                     qmSkip = [" C  ", " O  ", " N  ", " HN "] # We already know we don't want these backbone atoms in our qm region
@@ -431,8 +448,8 @@ for ii in qmResidueList:
                                             currentAtomName = atomname[mm-1]
 
             for ii in atomserialnospaces:
-                if re.match('%s.*%s' % (aminoname, aminonum), # regex match the input with the pdb file
-                            '%s A *%s' % (residuename[ii-1], residuesequencenumber[ii-1]), re.IGNORECASE) and atomname[ii-1] not in qmSkip:
+                if re.match('%s [A-Z] *%s' % (aminoname, aminonum), # regex match the input with the pdb file
+                            '%s %s%s' % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1]), re.IGNORECASE) and atomname[ii-1] not in qmSkip:
                     qmList[resCounter].append(atomname[ii-1].replace(" ", ""))
   
             if option == 'FrzAA':
@@ -441,8 +458,9 @@ for ii in qmResidueList:
                         qmFrez[resCounter].append(jj)
 
         resCounter += 1
-     
+
     elif len(ii[0].split("-")) == 2:
+        print ii
     # This is a range of residues which means we will include the entire side chains and all or part of the backbone along the sequence
     # First, expand range to all residue names
         begRes = ii[0].split("-")[0]
@@ -460,8 +478,8 @@ for ii in qmResidueList:
         for ii in atomserialnospaces:
             qmList[resCounter] = []
             qmChop[resCounter] = []
-            if re.match('%s.*%s ' % (begAminoName, begAminoNum), # regex match user input with the pdb file
-                        '%s A *%s ' % (residuename[ii-1], residuesequencenumber[ii-1]), re.IGNORECASE) and '%s %s%s' % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1]) not in qmRes:
+            if re.match('%s [A-Z] *%s ' % (begAminoName, begAminoNum), # regex match user input with the pdb file
+                        '%s %s%s ' % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1]), re.IGNORECASE) and '%s %s%s' % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1]) not in qmRes:
                 qmRes[resCounter] = '%s %s%s' % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1])
 
                 if begResOption == "N":
@@ -471,7 +489,7 @@ for ii in qmResidueList:
                     aminoname = begAminoName
 
                     if aminoname == 'ARG':
-                       charge += 1
+                        charge += 1
                     if aminoname == 'LYS':
                         charge += 1
                     if aminoname == 'ASP':
@@ -480,8 +498,8 @@ for ii in qmResidueList:
                         charge -= 1
 
                     for kk in atomserialnospaces:
-                        if re.match('%s.*%s' % (begAminoName, begAminoNum), # regex match the input with the pdb file
-                                    '%s A *%s' % (residuename[kk-1], residuesequencenumber[kk-1]), re.IGNORECASE) and atomname[kk-1] not in qmSkip:
+                        if re.match('%s [A-Z] *%s' % (begAminoName, begAminoNum), # regex match the input with the pdb file
+                                    '%s %s%s' % (residuename[kk-1], chainidentifier[kk-1], residuesequencenumber[kk-1]), re.IGNORECASE) and atomname[kk-1] not in qmSkip:
                             qmList[resCounter].append(atomname[kk-1].replace(" ", ""))
 
                 elif begResOption == "":
@@ -503,13 +521,18 @@ for ii in qmResidueList:
 
                 resCounter += 1
                 currentline = ii + 1
+
+                call('echo "%s.*%s" >> tempthingy' % (endAminoName, endAminoNum), shell=True)
                 while keepGoing:
-                    if re.match('%s.*%s ' % (endAminoName, endAminoNum), # regex match user input with the pdb file
-                                '%s A *%s ' % (residuename[currentline-1], residuesequencenumber[currentline-1]), re.IGNORECASE) and '%s %s%s' % (residuename[currentline-1], chainidentifier[currentline-1], residuesequencenumber[currentline-1]) not in qmRes:
+                    if re.match('%s [A-Z] *%s ' % (endAminoName, endAminoNum), # regex match user input with the pdb file
+                                '%s %s%s ' % (residuename[currentline-1], chainidentifier[currentline-1], residuesequencenumber[currentline-1]), re.IGNORECASE):
+#Why did I have this appended to the above if statement?
+#and '%s %s%s' % (residuename[currentline-1], chainidentifier[currentline-1], residuesequencenumber[currentline-1]) not in qmRes:
                     # This sees the end residue and stops the loop
                         qmRes[resCounter] = '%s %s%s' % (residuename[currentline-1], chainidentifier[currentline-1], residuesequencenumber[currentline-1])
                         qmList[resCounter] = []
                         keepGoing = False
+                        call('echo "keepGoing is False" >> tempthingy', shell=True)
                         aminoname = endAminoName
 
                         if endResOption == "":
@@ -527,12 +550,13 @@ for ii in qmResidueList:
                                 charge -= 1
 
                             for kk in atomserialnospaces:
-                                if re.match('%s.*%s' % (endAminoName, endAminoNum), # regex match the input with the pdb file
-                                            '%s A *%s' % (residuename[kk-1], residuesequencenumber[kk-1]), re.IGNORECASE) and atomname[kk-1] not in qmSkip:
+                                if re.match('%s [A-Z] *%s' % (endAminoName, endAminoNum), # regex match the input with the pdb file
+                                            '%s %s%s' % (residuename[kk-1], chainidentifier[kk-1], residuesequencenumber[kk-1]), re.IGNORECASE) and atomname[kk-1] not in qmSkip:
                                     qmList[resCounter].append(atomname[kk-1].replace(" ", ""))
 
                         elif endResOption == "N":
                             qmList[resCounter].append("N")
+                            qmList[resCounter].append("HN")
                             qmChop[resCounter] = ["CA", "N"]
                             qmFrez[resCounter] = ["N"]
 
@@ -552,36 +576,42 @@ for ii in qmResidueList:
                     # This part of the loop adds all atoms of everything within the range specified
                         currentResidue = '%s A%s' % (residuename[currentline-1], residuesequencenumber[currentline-1])
                         if currentResidue not in qmRes:
-                            qmList[resCounter] = []
-                            qmChop[resCounter] = ["Don't chop"]
-                            qmFrez[resCounter] = ["Don't freeze"]
-                            for kk in atomserialnospaces:
-                                if re.match('%s.*%s ' % (residuename[currentline-1], residuesequencenumber[currentline-1]), # regex match the input with the pdb file
-                                            '%s A *%s ' % (residuename[kk-1], residuesequencenumber[kk-1]), re.IGNORECASE):
-                                    qmRes[resCounter] = currentResidue
-                                    qmList[resCounter].append(atomname[kk-1].replace(" ", ""))
+                            if str("%s%s" % (residuename[currentline-1], residuesequencenumber[currentline-1])).replace(" ", "") in sidechainExcludeList:
+                                qmList[resCounter] = ["N", "O", "C", "HN", "CA", "HA"]
+                                qmChop[resCounter] = ["CB", "CA"]
+                                qmFrez[resCounter] = ["CA"]
+                                qmRes[resCounter] = currentResidue
+                            else:
+                                qmList[resCounter] = []
+                                qmChop[resCounter] = ["Don't chop"]
+                                qmFrez[resCounter] = ["Don't freeze"]
+                                for kk in atomserialnospaces:
+                                    if re.match('%s [A-Z] *%s ' % (residuename[currentline-1], residuesequencenumber[currentline-1]), # regex match the input with the pdb file
+                                                '%s %s%s ' % (residuename[kk-1], chainidentifier[kk-1], residuesequencenumber[kk-1]), re.IGNORECASE):
+                                        qmRes[resCounter] = currentResidue
+                                        qmList[resCounter].append(atomname[kk-1].replace(" ", ""))
+     
+                                if option  == 'FrzBB':
+                                    for jj in qmList[resCounter]:
+                                        qmFrez[resCounter] = []
+                                        if jj not in qmFrez[resCounter] and jj in ["N", "O", "C", "HN", "CA", "HA"]:
+                                            qmFrez[resCounter].append(jj)
 
-                            if option  == 'FrzBB':
-                                for jj in qmList[resCounter]:
-                                    qmFrez[resCounter] = []
-                                    if jj not in qmFrez[resCounter] and jj in ["N", "O", "C", "HN", "CA", "HA"]:
-                                        qmFrez[resCounter].append(jj)
+                                if option  == 'FrzAA':
+                                    for jj in qmList[resCounter]:
+                                        qmFrez[resCounter] = []
+                                        if jj not in qmFrez[resCounter]:
+                                            qmFrez[resCounter].append(jj)
 
-                            if option  == 'FrzAA':
-                                for jj in qmList[resCounter]:
-                                    qmFrez[resCounter] = []
-                                    if jj not in qmFrez[resCounter]:
-                                        qmFrez[resCounter].append(jj)
-
-                            aminoname = residuename[currentline-1]
-                            if aminoname == 'ARG':
-                                charge += 1
-                            if aminoname == 'LYS':
-                                charge += 1
-                            if aminoname == 'ASP':
-                                charge -= 1
-                            if aminoname == 'GLU':
-                                charge -= 1
+                                aminoname = residuename[currentline-1]
+                                if aminoname == 'ARG':
+                                    charge += 1
+                                if aminoname == 'LYS':
+                                    charge += 1
+                                if aminoname == 'ASP':
+                                    charge -= 1
+                                if aminoname == 'GLU':
+                                    charge -= 1
 
                             resCounter += 1
                         currentline += 1
@@ -594,14 +624,15 @@ metalList = []
 
 for ii in atomserialnospaces:
     if atom[ii-1] == 'HETATM' and atomname[ii-1].lower().replace(" ", "") in ["li", "be", "na", "mg", "k", "ca", "sc", "ti", "v", "cr", "mn", "fe", "co", "ni", "cu", "zn", "rb", "sr", "y", "zr", "nb", "mo", "tc", "ru", "pd", "ag", "cd", "cs", "ba", "hf", "ta", "w", "re", "os", "ir", "pt", "au", "hg", "la", "ce", "pr", "nd", "pm", "sm", "eu", "gd", "tb", "dy", "ho", "er", "tm", "yb", "lu"]:
-        metalPresent = True
-        if "%s %s%s" % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1]) not in qmRes:
+        if "%s %s%s" % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1]) not in qmRes and residuename[ii-1].replace(" ", "") not in list(x[0] for x in metalExcludeList):
+            metalPresent = True
             metalList.append(atomname[ii-1].replace(" ", ""))
-            qmList[resCounter] = [atomname[ii-1].replace(" ", "")]
-            qmChop[resCounter] = ["Don't chop"]
-            qmFrez[resCounter] = ["Don't freeze"]
-            qmRes[resCounter] = "%s %s%s" % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1])
-            resCounter += 1
+            if atomname[ii-1].replace(" ", "") not in list(x[0] for x in metalExcludeList):
+                qmList[resCounter] = [atomname[ii-1].replace(" ", "")]
+                qmChop[resCounter] = ["Don't chop"]
+                qmFrez[resCounter] = ["Don't freeze"]
+                qmRes[resCounter] = "%s %s%s" % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1])
+                resCounter += 1
     elif atom[ii-1] == 'HETATM' and residuename[ii-1] == 'SUB':
         if "%s %s%s" % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1]) not in qmRes and substrateCutList != []:
             qmRes[resCounter] = "%s %s%s" % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1]) 
@@ -637,7 +668,7 @@ for ii in atomserialnospaces:
                         atomDirections = nextSteps
                         nextSteps = []
                 for mm in atomserialnospaces:
-                    if '%s %s' % (residuename[mm-1], chainidentifier[mm-1]) == 'SUB B' and atomname[mm-1].replace(" ", "") not in qmSkip:
+                    if '%s %s' % (residuename[mm-1], chainidentifier[mm-1]) == 'SUB B' and atomname[mm-1].replace(" ", "") not in qmSkip and atomname[mm-1].replace(" ", "") not in qmList[resCounter]:
                         qmList[resCounter].append(atomname[mm-1].replace(" ", ""))
 
         # If the list of cuts along the substrate is empty, let's include all atoms in the QM region and not freeze or chop anything
@@ -660,13 +691,21 @@ qmRes = filter(None, qmRes)
 qmChop = filter(None, qmChop)
 
 
-third = []
+third = [None] * len(qmRes)
+newResOrder = []
 
-for ii in qmRes:
-    if ii.split()[1] == 'B':
-        third.append(1000 - int(ii[5:].replace(" ", "")))
-    else:
-        third.append(int(ii[5:].replace(" ", "")))
+currentCount = 1
+for ii in atomserialnospaces:
+    for idx, jj in enumerate(qmRes):
+        if "%s %s%s" % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1]) == jj and jj not in newResOrder:
+            if "".join(re.split("[^a-zA-Z]*", residuename[ii-1])).lower() in ["li", "be", "na", "mg", "k", "ca", "sc", "ti", "v", "cr", "mn", "fe", "co", "ni", "cu", "zn", "rb", "sr", "y", "zr", "nb", "mo", "tc", "ru", "pd", "ag", "cd", "cs", "ba", "hf", "ta", "w", "re", "os", "ir", "pt", "au", "hg", "la", "ce", "pr", "nd", "pm", "sm", "eu", "gd", "tb", "dy", "ho", "er", "tm", "yb", "lu"]:
+                third[idx] = currentCount + 200
+                newResOrder.append(jj)
+                currentCount += 1
+            else:
+                third[idx] = currentCount
+                newResOrder.append(jj)
+                currentCount += 1
 
 qmRes = [x for (y,x) in sorted(zip(third,qmRes), key=lambda pair: pair[0])]
 qmList = [x for (y,x) in sorted(zip(third,qmList), key=lambda pair: pair[0])]
@@ -688,6 +727,7 @@ call('if [ -f tempqm.pdb ]; then rm tempqm.pdb; fi', shell=True)
 
 # this section just to get reslist ready for Manuel's script to extract qm region
 call('if [ -f input ]; then rm input; fi', shell=True)
+
 
 myString = ""
 for ii in qmRes:
@@ -827,7 +867,8 @@ call('echo "export Iterations=%s" >> input' % DMDoptions['MaxIter'], shell=True)
 call('echo "export equilibrate=%s" >> input' % DMDoptions['Equilibrate'], shell=True)
 call('echo "export discard=%s" >> input' % DMDoptions['Discard'], shell=True)
 call('echo "export convergeDMD=%s" >> input' % DMDoptions['Converge'], shell=True)
-call('echo "export dmd_cores=%s" >> input' % clusterOptions['slots'], shell=True)
+call('echo "export dmd_cores=%s" >> input' % str(8), shell=True)
+# Hardcoding "8" dmd cores above, because DMD does not parallelize well past 8 and the smallest nodes on hoffman have 8 cores
 
 # input file generated
 ###########################################
@@ -845,10 +886,10 @@ with open(pdbFile) as pdbfileagain:
     for ii in pdbfileagain:
         if 'TER' in ii:
             TERcount += 1
-        if ii[12:14].lower() in ["li", "be", "na", "mg", "k", "ca", "sc", "ti", "v", "cr", "mn", "fe", "co", "ni", "cu", "zn", "rb", "sr", "y", "zr", "nb", "mo", "tc", "ru", "pd", "ag", "cd", "cs", "ba", "hf", "ta", "w", "re", "os", "ir", "pt", "au", "hg", "la", "ce", "pr", "nd", "pm", "sm", "eu", "gd", "tb", "dy", "ho", "er", "tm", "yb", "lu"]:
+        elif ii[12:14].lower().replace(" ", "") in ["li", "be", "na", "mg", "k", "ca", "sc", "ti", "v", "cr", "mn", "fe", "co", "ni", "cu", "zn", "rb", "sr", "y", "zr", "nb", "mo", "tc", "ru", "pd", "ag", "cd", "cs", "ba", "hf", "ta", "w", "re", "os", "ir", "pt", "au", "hg", "la", "ce", "pr", "nd", "pm", "sm", "eu", "gd", "tb", "dy", "ho", "er", "tm", "yb", "lu"]:
             inConstrStatic.append("Static %d.*.%s" % (TERcount + 1, ii[12:16].strip()))
             if firstMetal == "":
-                firstMetal = "%d.*.%s" % (TERcount + 1, ii[12:16].strip())
+                firstMetal = "%d.%d.%s" % (TERcount + 1, int(ii[22:26].replace(" ", "")), ii[12:16].strip())
 
 ######### Metal atoms are now frozen in DMD ####################
 
@@ -856,10 +897,9 @@ with open(pdbFile) as pdbfileagain:
 # part of the "qm only" region, i.e. DMD is not allowed to move them (only QM)
 
 # residues attached to metals
+call("if [ -f metalsaminodist ]; then rm metalsaminodist; fi", shell=True)
 for ii in metalList:
-    call("if [ -f metalsaminodist ]; then rm metalsaminodist; fi", shell=True)
     call("atomstometal %s %s >> metalsaminodist" % (pdbFile, ii.upper()), shell=True)
-
 resHeldStatic = []
 with open('metalsaminodist') as metalDist:
     for ii in metalDist:
@@ -867,15 +907,23 @@ with open('metalsaminodist') as metalDist:
         aminoname = ii.split(" ")[2][0:3]
         aminonum = ii.split(" ")[2][3:].strip()
         resHeldStatic.append("%s A%4d" % (aminoname, int(aminonum)))
-        inConstrStatic.append("Static 1.%s.%s" % (aminonum, aminoname))
-        # It may be a good idea to add "AtomPairRel" lines to further ensure DMD does not
-        # tamper disasterously with the qm region, (but still allow some sampling)
+        inConstrStatic.append("Static 1.%s.%s" % (aminonum, atomStatic))
+        #I need to figure out which atom is connected to this
+        #right now we have, e.g., atomStatic = OE1 and aminonum = 162
+        for jj in atomserialnospaces:
+            if atomname[jj-1].replace(" ", "") == atomStatic and int(residuesequencenumber[jj-1]) == int(aminonum):
+                for kk in bondlist[jj-1][1:]:
+                    if atomname[kk-1].lower().replace(" ", "") not in ["li", "be", "na", "mg", "k", "ca", "sc", "ti", "v", "cr", "mn", "fe", "co", "ni", "cu", "zn", "rb", "sr", "y", "zr", "nb", "mo", "tc", "ru", "pd", "ag", "cd", "cs", "ba", "hf", "ta", "w", "re", "os", "ir", "pt", "au", "hg", "la", "ce", "pr", "nd", "pm", "sm", "eu", "gd", "tb", "dy", "ho", "er", "tm", "yb", "lu"]:
+                        inConstrAtompairrel.append("AtomPairRel 1.%s.%s %s -%f +%f" % (aminonum, atomname[kk-1].replace(" ", ""), firstMetal, str(float(DMDoptions['Dispmagnitude'])/5.0), str(float(DMDoptions['Dispmagnitude'])/5.0)))
+        #Above is my attempt. let's see.
 
-for ii in qmRes:
+for idx, ii in enumerate(qmRes):
     if ii.split()[1] == 'A' and ii not in resHeldStatic:
     # We need to restrict the movement of this qm residue
         aminonum = ii[5:].replace(" ", "")
-        inConstrAtompairrel.append("AtomPairRel 1.%s.* %s -%f +%f" % (aminonum, firstMetal, DMDoptions['Dispmagnitude'], DMDoptions['Dispmagnitude']))
+        for jj in qmList[idx]:
+            if 'H' not in jj: #atom can't be nonpolar H, so to be easy let's just blanket this statement to all H
+                inConstrAtompairrel.append("AtomPairRel 1.%s.%s %s -%f +%f" % (aminonum, jj, firstMetal, DMDoptions['Dispmagnitude'], DMDoptions['Dispmagnitude']))
 
 # We should also, by default, leave the substrate as frozen to DMD. The only exception being if the user wanted to cut the substrate manually
 TERcount = 0
@@ -885,33 +933,49 @@ with open(pdbFile) as pdbfileagain:
             TERcount += 1
         if 'SUB B' in ii:
             break
-
 if substrateCutList == []:
     inConstrStatic.append("Static %d.*.*" % (TERcount + 1))
 # if the user did cut the substrate, let's leave static all atoms in the list of qm atoms:
 else:
     for idx, ii in enumerate(qmRes):
         if 'SUB B' in qmRes[idx]:
-            for jj in qmList:
+            for jj in qmList[idx]:
                 inConstrStatic.append("Static %d.*.%s" % (TERcount + 1, jj)) 
-
 ########## Substrate atoms are now frozen in DMD ###############
 
 # Let's print this stuff to the inConstr file!
 
 call('echo " " >> inConstr', shell=True)
 
+added1 = []
+added2 = []
+added3 = []
+added4 = []
+
 for ii in inConstrProtDeprot:
-    call('echo "%s" >> inConstr' % (ii), shell=True)
+    if ii not in added1:
+        added1.append(ii)
+        call('echo "%s" >> inConstr' % (ii), shell=True)
 
 call('echo " " >> inConstr', shell=True)
 for ii in inConstrStatic:
-    call('echo "%s" >> inConstr' % (ii), shell=True)
+    if ii not in added2:
+        added2.append(ii)
+        call('echo "%s" >> inConstr' % (ii), shell=True)
 
 call('echo " " >> inConstr', shell=True)
 for ii in inConstrAtompairrel:
-    call('echo "%s" >> inConstr' % (ii), shell=True)
+    if ii not in added3:
+        added3.append(ii)
+        call('echo "%s" >> inConstr' % (ii), shell=True)
 
 call('if [ -f qmRegionCharge ]; then rm qmRegionCharge; fi', shell=True)
 call('echo "%d" >> qmRegionCharge' % (charge), shell=True)
+
+qmResFile = open('temp/qmRes.txt', 'w')
+
+qmListFile = open('temp/qmList.txt', 'w')
+
+json.dump(qmRes, qmResFile)
+json.dump(qmList, qmListFile)
 

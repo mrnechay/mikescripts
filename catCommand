@@ -1,0 +1,4 @@
+#!/bin/bash
+echo "host file is"
+echo $PE_HOSTFILE
+cat $PE_HOSTFILE

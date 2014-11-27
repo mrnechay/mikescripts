@@ -1,0 +1,18 @@
+#!/bin/bash
+
+ here=`pwd`
+ cd $here
+
+ thing=`echo */`
+ list=`find . -type d -iname  KraftWerk`
+
+ for i in $list
+ do
+   cd $i
+   rm *.err *.log
+   cd ../
+   pwd
+   tar -czf KraftWerk.tgz KraftWerk/
+   rm -rf KraftWerk
+   cd $here
+ done

@@ -1,0 +1,329 @@
+#!/bin/bash
+
+source functions_gen.sh
+
+iter=$1
+   
+if [  $iter = 0 ]; then
+   mkdir Structures
+   cp new.pdb node_0
+   if [ -f dmd_energies.dat ]; then rm dmd_energies.dat; fi
+   echo "0 000.00000000" > dmd_energies.dat 
+else
+   
+   if [ $iter -le $steps_annealing ]; then
+      if [ $Iterations -ge 2 ]; then
+         compute_cc="$Ti -  (($Ti - $Tf)/($steps_annealing -1)) * ($iter - 1 )   "
+         value=$(float_eval "$compute_cc")
+      else
+         value=$Tf
+      fi
+   else
+      value=$Tf
+   fi
+   
+   #echo $value
+   # Now we run DMD: short simulation high Heat_x_c
+   echo
+   echo " We run a short simulation with high Heat_x_c: " $high_heat_xc
+   echo " to remove eventual clushes "
+   executeDMD.sh false $idealize $value $high_heat_xc  $t_high_XC $f_movie_dt 
+   
+   echo " I will now run DMD " 
+   if $secondDMD ; then echo " After the first run I try a second time and pick the simulation with lowest energy " ;  fi
+   if $convergeDMD ; then  echo " I will re-run DMD until it converges " ; fi
+   
+   if $equilibrate ;
+   then 
+       compute_cc="$value * $equilibrate_tfactor"
+       ht=$(float_eval "$compute_cc")
+       equilibrate.sh $ht $value $equilibrate_tot_time $equilibrate_steps $heat_xc
+   fi
+   
+   if  $annealing  ;
+   then
+      if [ $Iterations -ge 2 ]; then
+         compute_cc="$Tf -  (($Tf )/($Iterations -1)) * ($iter - 1 )   "
+         final=$(float_eval "$compute_cc")
+      else
+         final=$Tf
+      fi
+      annealing.sh $value $final 10 
+   else
+      # Now we run DMD
+      executeDMD.sh true $idealize $value $heat_xc  $MAX_TIME $f_movie_dt 
+   fi
+   
+   mean=`grep 00 echo | awk '{ sum += $4} END { printf " %f\n", sum/NR }'`
+   if [ -z ${mean}  ];      then       
+       echo "$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$"
+       echo Something went wrong with DMD, I will try again;  
+       echo "$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$"
+       # Now we run DMD: short simulation high Heat_x_c
+       executeDMD.sh false $idealize $value $high_heat_xc  $t_high_XC $f_movie_dt 
+       
+       if $equilibrate ;
+       then 
+           compute_cc="$value * $equilibrate_tfactor"
+           ht=$(float_eval "$compute_cc")
+           equilibrate.sh $ht $value $equilibrate_tot_time $equilibrate_steps $heat_xc
+       fi
+       
+       if  $annealing  ;
+       then
+          if [ $Iterations -ge 2 ]; then
+             compute_cc="$Tf -  (($Tf )/($Iterations -1)) * ($iter - 1 )   "
+             final=$(float_eval "$compute_cc")
+          else
+             final=$Tf
+          fi
+          annealing.sh $value $final 10 
+       else
+          # Now we run DMD
+          executeDMD.sh true $idealize $value $heat_xc  $MAX_TIME $f_movie_dt 
+       fi
+   fi
+
+   
+   
+   if $secondDMD;
+   then 
+      cp movie movie_first
+      cp "echo" echo_first
+      cp "restart" restart_first 
+
+      if $equilibrate ;
+      then 
+          compute_cc="$value * $equilibrate_tfactor"
+          ht=$(float_eval "$compute_cc")
+          equilibrate.sh $ht $value $equilibrate_tot_time $equilibrate_steps $heat_xc
+      fi
+
+      # Now we run DMD
+      executeDMD.sh true $idealize $value $heat_xc  $MAX_TIME $f_movie_dt 
+
+      cp "echo" echo_second
+      cp movie movie_second
+      cp "restart" restart_second 
+
+      # select which of the DMD to use in the analysis 
+
+      mean_1=`grep 00 echo_first | awk '{ sum += $4} END { printf " %f\n", sum/NR }'`
+      if [ -z ${mean_1}  ]; then  echo Zero length value; mean_1=0.0  ; fi
+      stdev_1=`grep 00 echo_first | awk '{ sum += $4; sumsq += $4*$4 } END { printf "%f\n", sqrt(sumsq/(NR) - (sum/(NR))^2) }'`
+      if [ -z ${stdev_1}  ]; then  echo Zero length value; stdev_1=0.0  ; fi
+      mean_2=`grep 00 echo_second | awk '{ sum += $4} END { printf " %f\n", sum/NR }'`
+      if [ -z ${mean_2}  ]; then  echo Zero length value; mean_2=0.0  ; fi
+      stdev_2=`grep 00 echo_second | awk '{ sum += $4; sumsq += $4*$4 } END { printf "%f\n", sqrt(sumsq/(NR) - (sum/(NR))^2) }'`
+      if [ -z ${stdev_2}  ]; then  echo Zero length value; stdev_2=0.0  ; fi
+
+      echo "First  DMD simulation average:"  $mean_1 "(" $stdev_1 ")"
+      echo "Second DMD simulation average:"  $mean_2 "(" $stdev_2 ")"
+
+      if [ `echo " $mean_1 < $mean_2 " | bc` -eq "1" ] ; then 
+         echo "First DMD simulation had a lower energy average;"
+         mv movie_first movie
+         mv echo_first "echo"
+         mv restart_first "restart"
+         rm movie_second
+         rm restart_second
+      else
+         echo Second DMD simulation had a lower energy average;
+         mv movie_second movie
+         mv echo_second "echo"
+         mv restart_second "restart"
+         rm movie_first
+         rm restart_first
+      fi
+
+      echo "I will continue using the simulation "
+      echo "with the lowest energy "
+      echo
+   fi
+
+
+
+   if $convergeDMD ;
+   then
+      
+      echo " --------------------------------------------- "
+      echo " I will check the convergence of the DMD phase "
+      echo " --------------------------------------------- "
+
+      n_attempt=1
+      converged=false
+      cp movie movie_${n_attempt}
+      cp "echo" echo_${n_attempt}
+      cp "restart" restart_first 
+      
+      if [ -f convergence_dmd.dat ] ; then rm convergence_dmd.dat ; fi
+
+      grep 00 echo_${n_attempt} | awk '{print $4 }' >> convergence_dmd.dat
+      
+      while [ $n_attempt -lt $MaxDMD ];
+      do
+         previous=$n_attempt
+         n_attempt=$(( $n_attempt + 1 ))
+         echo Attempt: $n_attempt
+         echo 
+
+         cp movie movie_${previous}
+         cp "echo" echo_${previous}
+         cp "restart" restart_first 
+                           
+         if $equilibrate ;
+         then 
+             compute_cc="$value * $equilibrate_tfactor"
+             ht=$(float_eval "$compute_cc")
+             equilibrate.sh $ht $value $equilibrate_tot_time $equilibrate_steps $heat_xc
+         fi
+         
+         # Now we run DMD
+         executeDMD.sh true $idealize $value $heat_xc  $MAX_TIME $f_movie_dt 
+
+         cp movie movie_${n_attempt}
+         cp "echo" echo_${n_attempt}
+         cp "restart" restart_second
+
+         grep 00 echo_${n_attempt} | awk '{print $4 }' >> convergence_dmd.dat
+
+         mean_prev=`grep 00 echo_${previous} | awk '{ sum += $4} END { printf " %f\n", sum/NR }'`
+         if [ -z ${mean_prev}  ]; then  echo Zero length value; mean_prev=0.0  ; fi
+         stdev_prev=`grep 00 echo_${previous} | awk '{ sum += $4; sumsq += $4*$4 } END { printf "%f\n", sqrt(sumsq/(NR) - (sum/(NR))^2) }'`
+         if [ -z ${stdev_prev}  ]; then  echo Zero length value; stdev_prev=0.0  ; fi
+         mean_curr=`grep 00 echo_${n_attempt} | awk '{ sum += $4} END { printf " %f\n", sum/NR }'`
+         if [ -z ${mean_curr}  ]; then  echo Zero length value; mean_curr=0.0  ; fi
+         stdev_curr=`grep 00 echo_${n_attempt} | awk '{ sum += $4; sumsq += $4*$4 } END { printf "%f\n", sqrt(sumsq/(NR) - (sum/(NR))^2) }'`
+         if [ -z ${stdev_curr}  ]; then  echo Zero length value; stdev_curr=0.0  ; fi
+         
+         echo 
+         echo 
+         echo "Previous  DMD simulation average:" $mean_prev "(" $stdev_prev ")"
+         echo "Current   DMD simulation average:" $mean_curr "(" $stdev_curr ")"
+         echo 
+
+
+         if [ `echo " $mean_prev < $mean_curr " | bc` -eq "1" ] ; then 
+            echo "Previous DMD simulation had a lower energy average;"
+
+            mv restart_first "restart" 
+            cp movie_${previous} movie
+            mv echo_${previous} "echo"
+            rm movie_${previous}
+            rm movie_${n_attempt}
+            rm restart_second
+
+            if [ `echo " (( $mean_curr - $mean_prev ) < $stdev_prev) && (( $mean_curr - $mean_prev ) < $stdev_curr) " | bc` -eq "1"  ];
+            then 
+                converged=true
+                n_attempt=$MaxDMD   # this stop the while cycle
+            else
+                echo "Nop, it seems DMD was not converged, if possible I try another time"
+            fi
+         else
+            echo Current DMD simulation had a lower energy average;
+
+            mv restart_second "restart" 
+            cp movie_${n_attempt} movie
+            mv echo_${n_attempt} "echo"
+            rm movie_${previous}
+            rm movie_${n_attempt}
+            rm restart_first
+
+            if [ `echo " (( $mean_prev - $mean_curr ) < $stdev_prev) && (( $mean_prev - $mean_curr ) < $stdev_curr) " | bc` -eq "1"  ];
+            then 
+                converged=true
+                n_attempt=$MaxDMD   # this stop the while cycle
+            else
+                echo "Nop, it seems DMD was not converged, if possible I try another time"
+                echo "restarting from the DMD simulation with the lowest energy"
+            fi
+         fi
+
+
+         if [ $n_attempt -eq $MaxDMD   ]; then
+             if $converged ;
+             then
+                 echo "Cool DMD is actually considered converged"
+             else
+                 echo "Unfortunately I can not consider DMD converged, I will continue using the simulation "
+                 echo "with the lowest energy "
+             fi
+         else
+             echo "Ok, i will try again "
+         fi
+         echo 
+      done
+   fi
+
+   #last frame index
+   lastfr=`tail -1 echo|awk '{print $1}'`
+   
+   ###
+   # The most basic analysis of the output data is to visualize the trajectory.
+   # This tool takes as input the same files as complex.linux, the trajectory
+   # file produced in previous step, and the output file name
+   ###
+   complex_M2P.linux $parameters new.pdb topparam.list movie movie.pdb inConstr  &>> dmd.err
+   #rm param
+
+
+
+   if [ -f dmd_energies.dat ]; then  rm dmd_energies.dat ; fi
+   
+   shopt -s nullglob
+   for node in node* ; do
+     rm $node
+   done
+   
+   notcluster=true; 
+
+   if $cluster_minEnergy ; 
+   then 
+       echo " Clustering into " $n_cluster " cluster and extracting energy minima"
+       notcluster=false
+   fi
+   if $cluster_centroid ; 
+   then 
+       echo " Clustering into " $n_cluster " cluster and extracting centroids"
+       notcluster=false
+   fi
+
+   if $notcluster ; then echo "ERROR: You should not even be here, check your input for  cluster_minEnergy, cluster_centroids: exit "  ; fi 
+   
+   cluster.sh $n_cluster  2> /dev/null
+
+   
+   mkdir Structures
+   mv clusters.dat Structures/
+   rm  oc_input  
+   rm  oc_output  
+   
+fi
+
+
+#extract residues
+
+count=0;
+
+shopt -s nullglob
+for node in node_*; do
+  cp $node Structures/${node}_full.pdb
+  active_site.sh $node $MainDir/input
+  count=$(( $count + 1 ))
+done
+
+
+if [ $count -gt 0  ] ; then
+    echo  "************************************************"
+    echo  "During the DMD phase I collected " $count frames
+    echo  "                DMD completed              "
+    echo  "************************************************"
+else
+    echo " Something went wrong during the DMD phase "
+    echo " ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ "
+fi
+###
+# The animated trajectory can be visualized in Pymol
+###
+#pymol movie.pdb

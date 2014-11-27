@@ -6,6 +6,9 @@
 # $1 is input file
 # $2 is a flag to run right away. for when you're confident it will set up properly
 
+node_type=8
+scfconvergence=7
+
 filename=`echo $1 | awk -F"." '{print $1}'`
 filetype=`echo $1 | awk -F"." '{print $NF}'`
 
@@ -77,6 +80,10 @@ elif [[ $multiplicity == 5 ]]; then
  mult='u\ 4'
 elif [[ $multiplicity == 7 ]]; then
  mult='u\ 6'
+elif [[ $multiplicity == 9 ]]; then
+ mult='u\ 8'
+elif [[ $multiplicity == 11 ]]; then
+ mult='u\ 10'
 fi
 
 if [[ $multiplicity == 2 ]]; then
@@ -91,7 +98,7 @@ cd $filename\_$type
 
 if [ -a qdefine.sh ]; then rm qdefine.sh; fi
 
-echo "echo -e \"\n\na coord\ndesy\n*\nno\nb all BASISSET\n\n" > qdefine.sh
+echo "echo -e \"\n\na coord\n*\nno\nb all BASISSET\n\n" > qdefine.sh
 sed -i "s/BASISSET/$basisset/g" qdefine.sh
 
 number=`egrep " k| ca| sc| ti| v| cr| mn| fe| co| ni| cu| zn| rb| sr| y| zr| nb| mo| tc| ru| rh| pd| ag| cd| cs| ba| lu| hf| ta| w| re| os| ir| pt| au| hg" coord | awk -F" " '{print $4}' | wc -l`
@@ -195,7 +202,8 @@ sed -i 's/\$scforbitalshift  closedshell.*/\$scforbitalshift automatic 0.1/g' co
 sed -i '/\$scfconv/d' control
 sed -i '/\$scfdamp/d' control
 sed -i '/\$scfiterlimit/a \\$scfdamp   start=4.700  step=0.050  min=0.100' control
-sed -i '/\$scfiterlimit/a \\$scfconv   5' control
+sed -i '/\$scfiterlimit/a \\$scfconv   SCFCONVERGENCE' control
+sed -i "s/SCFCONVERGENCE/$scfconvergence/g" control
 
 if [ -a script.sh ]; then rm script.sh; fi
 
@@ -255,7 +263,7 @@ elif [[ $type == tsNumForce ]]; then
   echo "No hessian file detected. Beware that aoforce will be invoked automatically before ts optimization"
  fi
  echo "ridft >> ridft.out" > script.sh
- echo "jobex -c 500 -ri -energy 7 -gcart 4 -statpt -trans" >> script.sh
+ echo "jobex -c 500 -ri -energy 5 -gcart 2 -statpt -trans" >> script.sh
  echo "genMFILE" >> script.sh
  echo "NumForce -ri -level $functional -central -frznuclei -mfile MFILE > numforce.out" >> script.sh
  chmod +x script.sh
@@ -266,7 +274,7 @@ elif [[ $type == NumForcetsNumForce ]]; then
  echo "rdgrad >> rdgrad.out" >> script.sh
  echo "genMFILE" >> script.sh
  echo "NumForce -ri -level $functional -central -frznuclei -mfile MFILE > numforce.out" >> script.sh
- echo "jobex -c 500 -ri -energy 7 -gcart 4 -statpt -trans" >> script.sh
+ echo "jobex -c 500 -ri -energy 5 -gcart 2 -statpt -trans" >> script.sh
  echo "NumForce -ri -level $functional -central -frznuclei -mfile MFILE > numforce.out" >> script.sh
  chmod +x script.sh
 
@@ -278,6 +286,8 @@ elif [[ $type == optNumForcetsNumForce ]]; then
  echo "freezeatoms $freeze2" >> script.sh
  echo "NumForce -ri -level $functional -central -frznuclei -mfile MFILE > numforce.out" >> script.sh
  echo "sed -i 's/itrvec      0/itrvec      1/g' control" >> script.sh
+ echo "cp job.last old_job.last" >> script.sh
+ echo "cp gradient old_gradient" >> script.sh
  echo "jobex -c 500 -ri -energy 5 -gcart 2 -statpt -trans" >> script.sh
  echo "NumForce -ri -level $functional -central -frznuclei -mfile MFILE > numforce.out" >> script.sh
  chmod +x script.sh
@@ -298,7 +308,7 @@ fi
 # let's modify the control file if desired
 
 if [[ $troublesomeTSsearch == y ]]; then
- sed -i 's/.*itrvec.*/&\n   radmin     5.0E-06\n   radmax     2.0E-02\n   tradius    2.0E-02/g' control
+ sed -i 's/.*itrvec.*/&\n   radmin     5.0E-06\n   radmax     2.0E-02\n   tradius    2.0E-05/g' control
 else
  sed -i 's/.*itrvec.*/&\n   tradius    0.20/g' control
 fi
@@ -321,11 +331,16 @@ if [[ $maxcor ]]; then
  sed -i "s/MAXCOR/$maxcor/g" control
 fi
 
+# I had some large jobs fail with the suggestion: increase ga_memperproc heap by 458734 8-byte words
+# The following doubles stack and heap from defaults, so this should cover systems of any size we
+# would use
+sed -i 's/$end/$paroptions \n ga_memperproc 2621440 78643200\n&/g' control
+
 #end control file manipulation
 
 IFS=',' read -a Nvalues <<< "$slots"
 
-cp ~/mikescripts/otherscript.sh ./
+cp /u/home/m/mnechay/mikescripts/otherscript.sh ./
 
 if [ "${#Nvalues[@]}" -gt "1" ]; then
  for ii in ${Nvalues[@]}; do
@@ -349,9 +364,9 @@ else
   scf=`grep scfiterlimit control | awk -F" " '{print $NF}'`
   if [ $scf == 500 ]; then
    if [[ $exclusive == n ]]; then
-    runturbomole.mine -sub -N $Nvalues -t $time otherscript.sh
+    runturbomole.mine -sub -N $Nvalues -t $time -type $node_type otherscript.sh
    else
-    runturbomole.mine -sub -N $Nvalues -t $time otherscript.sh
+    runturbomole.mine -sub -N $Nvalues -t $time -type $node_type otherscript.sh
    fi
   fi
  fi

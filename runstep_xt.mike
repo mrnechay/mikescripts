@@ -6,18 +6,20 @@ fileexist=0
 toomanyargs=0
 DIR=`pwd`
 submit=0
-cores="4"
-node_type="8"
+cores="8"
+node_type="4"
 wall="24"
+mem="0"
 h_data="0"
 #
 ECHO='echo -en'
 #
 usage() {
    $ECHO "\n\tAN ERROR WAS ENCOUNTERED:\n\n"
-   $ECHO "\tUsage:\trunturbomole.sh [-N cores] [-t h_rt] [-q queue] [-sub] [-help]  script_name \n\n"
+   $ECHO "\tUsage:\trunturbomole.sh [-N cores] [-t time] [-q queue] [-sub] [-help]  script_name \n\n"
    $ECHO "\t\t-N\t  :\tcores to use, \t\t\t\t[default:     8      \t]\n"
    $ECHO "\t\t-type\t :\tnode_typeto use, \t\t\t\t[default:     8      \t]\n"
+   $ECHO "\t\t-mem\t  :\tmemory used,\t\t\t\t[default: 1024Mb*core\t] \n"
    $ECHO "\t\t-h_data\t  :\tmemory used,\t\t\t\t[default: 1024Mb*core\t] \n"
    $ECHO "\t\t-t\t  :\tWalltime to use, in hours.\t\t[default:    24   \t] \n"
    $ECHO "\t\t-sub\t  :\t(no argument) Submit the job.\t\t[default: don't submit\t]\n"
@@ -37,8 +39,8 @@ usage() {
 #
 makefile() {
 
-runfile=$1.tmole
-name=$1
+runfile=`basename $PWD`_$1.sh
+name=`basename $PWD`_$1
 
 
 cat << %EOF% > $runfile
@@ -49,8 +51,8 @@ cat << %EOF% > $runfile
 #  Use current working directory
 #$ -cwd
 #  input           = /dev/null
-#  output          = $DIR/$1.joblog
-#$ -o $DIR/$1.joblog.\$JOB_ID
+#  output          = $DIR/$name.joblog
+#$ -o $DIR/$name.joblog.\$JOB_ID
 #  error           = Merged with joblog
 #$ -j y
 #  Parallelism:  $cores-way parallel
@@ -58,7 +60,8 @@ cat << %EOF% > $runfile
 #  Resources requested
 #$ -pe ${node_type}threads* $cores
 ##$ -pe dc_* $cores
-#$ -l exclusive,h_data=$((h_data))G,h_rt=$wall:00:00${queue}
+##$ -l mem=$((mem))G,time=$wall:00:00,highp
+#$ -l h_data=$((h_data))G,time=$wall:00:00,highp
 
 #  Name of application for log
 #$ -v QQAPP=openmpi
@@ -81,24 +84,24 @@ cat << %EOF% > $runfile
   set qqapp     = "openmpi parallel"
   set qqptasks  = $cores
   set qqidir    = $DIR
-  set qqjob     = $1
+  set qqjob     = $name
   set qqodir    = $DIR
-
   ##set global_scratch = /u/scratch/$USER/job_\$JOB_ID
- set global_scratch = $SCRATCH/job_\$JOB_ID
- #  set global_scratch = $HOME/tmp/job_\$JOB_ID
-
+  set global_scratch = $SCRATCH/job_\$JOB_ID
+  #set global_scratch = $HOME/tmp/job_\$JOB_ID
   mkdir \$global_scratch
-  echo "I created the scratch dir" \$global_scratch
 
   source /u/local/bin/qq.sge/qr.runtime
   if (\$status != 0) exit (1)
 #
-  echo "I sourced the runtime file"
-
-  echo "  script directory: "\$qqidir
-  echo "  Submitted to SGE: "\$qqsubmit
-  echo "  'scratch' directory (on each node): "\$qqscratch
+  echo "SGE job for script built Wed Sep 22 08:36:30 PDT 2010"
+  echo ""
+  echo "  script directory:"
+  echo "    "\$qqidir
+  echo "  Submitted to SGE:"
+  echo "    "\$qqsubmit
+  echo "  'scratch' directory (on each node):"
+  echo "     \$qqscratch"
   echo "  script $cores-way parallel job configuration:"
   echo "    \$qqconfig" | tr "\\\\" "\n"
 #
@@ -109,6 +112,7 @@ cat << %EOF% > $runfile
 #
 # Run the user program
 #
+
    if !(\$?LD_LIBRARY_PATH) then
        setenv LD_LIBRARY_PATH  /u/local/intel/11.1/openmpi/1.4.2/lib:/u/local/compilers/intel/11.1/current/lib/intel64
    else
@@ -116,50 +120,28 @@ cat << %EOF% > $runfile
    endif
 
    echo "    \$qqconfig" | tr "\\\\" "\n" | awk '{print \$2, \$4 }' > \$global_scratch/nodes.\$JOB_ID
-   ~snedd/bin/list_hosts.sh \$global_scratch/nodes.\$JOB_ID \$global_scratch/nodes_long.\$JOB_ID
+   ~snedd/bin/list_hosts.sh \$global_scratch/nodes.\$JOB_ID \$global_scratch/core_list.\$JOB_ID
 
-  setenv TURBODIR /u/home/q/qsmith/TURBOMOLE
+  setenv TURBODIR /u/home/s/snedd/bin/TURBOMOLE
   source \$TURBODIR/Config_turbo_env.tcsh
+  #setenv PARA_ARCH MPI
   setenv PARA_ARCH SMP
   set path=(\$TURBODIR/bin/`sysname` \$path)
   setenv PARNODES  $cores
-  setenv HOSTS_FILE \$global_scratch/nodes_long.\$JOB_ID
+  setenv HOSTS_FILE \$global_scratch/core_list.\$JOB_ID
 
   setenv TURBOTMPDIR \$global_scratch
 
-  cp -r \$qqidir/* \$global_scratch/
-  cd \$global_scratch/
 
-  if ( -e time_requested ) then
-    rm time_requested
-  endif
+  set time=(10 "System time: %S  User time: %U  Elapsed time: %E")
+  time   step.sh $1 $2  \$global_scratch  \$JOB_ID  >& step${1}.sh.out
+  
+  find . -type f -iname *dsk* | awk '{ print "rm", \$1}' | sh
 
-  echo $wall > time_requested
-
-  rm $1.joblog.\$JOB_ID
-
-  set h_rt=(10 "System time: %S  User time: %U  Elapsed time: %E")
-  time   $1  >& $1.output.\$JOB_ID
-
-# clean up a little bit  
-  rm slave*
-  rm nodes*
-  rm *dsk*
-
-  cd \$qqodir/
-
-  cp -r \$global_scratch/* \$qqodir/
   rm -rf \$global_scratch/*
 
   echo ""
-  echo "$1 finished at:  "` date `
-
-  if ( -e pleaseResubmit ) then
-    cp remainingscript.sh script.sh
-    bash ~/mikescripts/runturbomole.mine -sub -N \$NSLOTS -t $wall -type $node_type otherscript.sh
-    rm pleaseResubmit
-  endif
-
+  echo "step.sh finished at:  "` date `
 
 #
 # Cleanup after mpi parallel execution
@@ -167,6 +149,10 @@ cat << %EOF% > $runfile
 #
   source /u/local/bin/qq.sge/qr.runtime
 #
+  
+  runstep_xt.sh -sub -N $cores -t $wall -q highp $3 $4
+
+
   exit (0)
 
 %EOF%
@@ -194,10 +180,10 @@ while [ -n "`echo $1 | grep '^-'`" ]; do
          if [ "$queue" == "std" ]; then
             queue=" "
          fi
-         if [ "$queue" == "highp" ]; then
-            queue=",highp"
-         fi
          shift ;;
+#     -mem)
+#        mem=$2
+#        shift ;;
       -h_data)
          h_data=$2
          shift ;;
@@ -210,25 +196,17 @@ while [ -n "`echo $1 | grep '^-'`" ]; do
    shift
 done
 #
-#default use highp if requesting more than 24 hours
-if [ "$wall" -gt "24" ]; then
-   echo "You requested more than 24 hours. Switching queue choice from std to highp".
-   queue=",highp"
-fi
-#
 #echo "\$1 = $1"
-if [ "$1" == "" ]; then
-   nofile=1
-   usage
-fi
 #
-if [ ! -e "$1" ]; then
-   fileexist=1
-   usage
-fi
 #
 
 
+#if [ "$mem" == "0" ]; then
+#  mem=4
+#  (( mem*=$cores ))
+#  if [ "$mem" -gt "8" ]; then mem=4; fi 
+##echo $mem
+#fi
 if [ "$h_data" == "0" ]; then
   h_data=4
   (( h_data*=$cores ))
@@ -237,13 +215,16 @@ if [ "$h_data" == "0" ]; then
 fi
 
 if [ "$cores" -gt "1" ]; then
+  #export PARA_ARCH=MPI
   export PARA_ARCH=SMP
 fi
 
 #
 runfile="thisiscrap"
-makefile $1 $runfile
-chmod a+x $1
+next=$(( $2 + 1 ))
+final=$(( $next + $2 - $1 ))
+
+makefile $1 $2 $next $final $runfile
 #
 if [ $submit -eq 0 ]; then
    $ECHO "Now just do 'qsub $runfile'\n"

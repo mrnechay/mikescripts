@@ -1,0 +1,4 @@
+#!/bin/bash
+
+python analyze.py > analyze.OUT
+python plogp.py > plogp.OUT

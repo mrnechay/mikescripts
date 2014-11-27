@@ -129,7 +129,7 @@ with open("movie.pdb") as infile:
          outfile.close()
          writeanother = True
          if first:
-            call(["babel", outfile.name, "first.mol2"])
+            call(["/u/local/gcc/4.4.4/apps/openbabel/2.3.1/bin/babel", outfile.name, "first.mol2"])
             first = False
             mol2file = "first.mol2"
 

@@ -1,8 +1,10 @@
 #!/bin/bash
 
+#set -x
+
 # So say I want to do a transition state search on a single structure
 # input should look like:
-# quickts reactant product
+# quickts reactant product file.mtm
 # $1 should be coord file with reactants
 # $2 should be coord file with products
 # $3 should be the input .mtm file

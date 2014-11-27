@@ -1,0 +1,6 @@
+echo " lol "
+sleep 5
+echo " lol2"
+sleep 5
+echo " lol3"
+
