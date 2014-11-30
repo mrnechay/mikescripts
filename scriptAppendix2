@@ -1,0 +1,72 @@
+#!/bin/bash
+
+#set -x
+
+if [ -d finishOptAndNumForce ]; then rm -r finishOptAndNumForce; fi
+mkdir finishOptAndNumForce
+mkdir finishOptAndNumForce/justResidues
+cp Optimization/* ./finishOptAndNumForce/
+if [ -f ./finishOptAndNumForce/script.sh ]; then rm ./finishOptAndNumForce/script.sh; fi
+cd finishOptAndNumForce/
+echo "jobex -c 500 -ri -energy 5 -gcart 2 -gexp 2" >> script.sh
+echo "genMFILE" >> script.sh
+echo "NumForce -ri -level $functional -central -frznuclei -mfile MFILE > numforce.out" >> script.sh
+cd ../
+# need to freeze all residue atoms before NumForce
+
+if [ -d justSubstrateAndNumForce ]; then rm -r justSubstrateAndNumForce; fi
+mkdir justSubstrateAndNumForce
+cp ../input ./
+forReslist=`grep '#list SUB' input | awk '{print substr($0,7,9)}'`
+if [ -f input2 ]; then rm input2; fi 
+echo "export reslist=(\"$forReslist\")" >> input2
+echo " " >> input2
+grep '#list SUB' input >> input2
+echo " " >> input2
+grep '#chop SUB' input >> input2
+echo " " >> input2
+grep '#freeze SUB' input >> input2
+mv input2 input
+extract_qm.sh new.pdb x.pdb
+sed -i 's/Eh/ H/g' x.pdb
+create_coord.sh x.pdb >> qmdmdsetup.log
+mv coord justSubstrateAndNumForce/
+cd justSubstrateAndNumForce
+qmdmddirectory=`pwd | awk -F"/" '{print $(NF-2)}'`
+if [ -f ../../$qmdmddirectory.mtm ]; then cp ../../$qmdmddirectory.mtm justSubstrateAndNumForce.mtm
+elif [ -f ../../../$qmdmddirectory.mtm ]; then cp ../../../$qmdmddirectory.mtm justSubstrateAndNumForce.mtm; fi
+if [ -f ../../$qmdmddirectory.qmdmd ]; then cp ../../$qmdmddirectory.qmdmd justSubstrateAndNumForce.qmdmd
+elif [ -f ../../../$qmdmddirectory.qmdmd ]; then cp ../../../$qmdmddirectory.qmdmd justSubstrateAndNumForce.qmdmd; fi
+
+#multiplicity=`cat justSubstrateAndNumForce.qmdmd | grep "  multiplicity" | awk -F" " '{print $NF}'`
+multiplicity=1 # Umm... substrates will mostly just be this. right? I'll need to change later if not...
+charge=`cat justSubstrateAndNumForce.qmdmd | grep "  substrate charge" | awk -F" " '{print $NF}'`
+echo "  charge                = $charge" >> ./justSubstrateAndNumForce.mtm
+echo "  multiplicity          = $multiplicity" >> ./justSubstrateAndNumForce.mtm
+performturbomole coord
+newfolder=`echo */ | sed s:/::g`
+cp $newfolder/* ./
+rm -r $newfolder
+
+echo "jobex -c 500 -ri -energy 5 -gcart 2 -gexp 2" >> script.sh
+echo "genMFILE" >> script.sh
+echo "freezeatoms $freeze2" >> script.sh
+echo "NumForce -ri -level $functional -central -frznuclei -mfile MFILE > numforce.out" >> script.sh
+
+if [ -d justResidues ]; then rm -r justResidues; fi
+mkdir justResidues
+cp ../input ./
+forReslist=`grep '#list SUB' input | awk '{print substr($0,7,9)}'`
+if [ -f input2 ]; then rm input2; fi
+grep "export reslist=(" input | sed "s/ \"SUB .....\"//g" >> input2
+echo " " >> input2
+grep '#list' input | grep -v 'SUB' >> input2
+echo " " >> input2
+grep '#chop' input | grep -v 'SUB' >> input2
+echo " " >> input2
+grep '#freeze' input | grep -v 'SUB' >> input2
+mv input2 input
+extract_qm.sh new.pdb x.pdb
+sed -i 's/Eh/ H/g' x.pdb
+create_coord.sh x.pdb >> qmdmdsetup.log
+

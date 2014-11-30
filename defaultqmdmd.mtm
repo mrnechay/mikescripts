@@ -21,6 +21,7 @@ TS options (ignore if not):
   troublesome TS search	= n
 
 Other options to deal with troublesome calculations:
+  scf convergence               = 7
   loosen convergence criteria	= n
   weight derivatives		= y
   gridsize			= m4

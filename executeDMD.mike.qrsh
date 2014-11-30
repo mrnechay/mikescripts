@@ -20,8 +20,6 @@ f_heatxc=$heat_xc
 n_time=$MAX_TIME
 f_movie_dt=$f_movie_dt
 
-echo "b_restart is"
-echo "$b_restart"
 
 if $b_restart ;
 then
@@ -31,8 +29,6 @@ then
     mv "restart" state
 
 else
-    echo
-    echo "DMD will start from scratch, complex-1.linux will generate the necessary files"
     
 
     ###
@@ -53,9 +49,9 @@ else
     ###
     if $b_idealize ;
     then
-        complex-1.linux -P $parameters -I new.pdb -T topparam.list -D 200 -p param -s state -S 123 -C inConstr  -c outConstr --idealize  2>> dmd.err
+        complex-1.linux -P $parameters -I new.pdb -T topparam.list -D 200 -p param -s state -S 123 -C inConstr  -c outConstr --idealize  >> qrsh.log 2>> dmd.err
     else
-        complex-1.linux -P $parameters -I new.pdb -T topparam.list -D 200 -p param -s state -S 123 -C inConstr  -c outConstr 2>> dmd.err
+        complex-1.linux -P $parameters -I new.pdb -T topparam.list -D 200 -p param -s state -S 123 -C inConstr  -c outConstr >> qrsh.log 2>> dmd.err
     fi
 fi
 
@@ -88,9 +84,7 @@ MOVIE_DT                 $f_movie_dt
 MAX_TIME                 $n_time
 EOF
    
-echo "I'm about to start the actual simulation program"
-pwd
-ls
+echo "Starting a very quick DMD simulation to hopefully relieve any clashes. You should be in a qrsh session."
    
 if $xDMD ;
 then
@@ -99,6 +93,6 @@ else
     ydmd.linux -i start.x -s state -p param -c outConstr -m $dmd_cores &>> dmd.err
 fi
 
-echo " check dmd.err for eventual errors/warnings "
+echo " almost done! "
 complex_M2P.linux $parameters new.pdb topparam.list movie movie.pdb inConstr  &>> dmd.err
 echo

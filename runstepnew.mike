@@ -228,7 +228,6 @@ makefile $1 $2 $next $final $runfile
 #
 
 
-sed -i "s/dmd_cores=.*/dmd_cores=$node_type/g" input
 
 
 if [ $submit -eq 0 ]; then

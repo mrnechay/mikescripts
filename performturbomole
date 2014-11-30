@@ -40,6 +40,11 @@ else
  exit 0
 fi
 
+# Minnesota functionals are not recognized by the define script. We'll need to sed them in later
+if [ "$functional" == "m06" ]; then functional=tpss; mnFunctional=m06
+elif [ "$functional" == "m06-2x" ]; then functional=tpss; mnFunctional=m06-2x
+else mnFunctional=n; fi
+
 if [ -d $filename\_$type ]; then rm -r $filename\_$type; fi
 mkdir $filename\_$type
 
@@ -306,6 +311,10 @@ fi
 
 
 # let's modify the control file if desired
+
+if [[ $mnFunctional != n ]]; then
+ sed -i "s/functional .*/functional $mnFunctional/g" control
+fi
 
 if [[ $troublesomeTSsearch == y ]]; then
  sed -i 's/.*itrvec.*/&\n   radmin     5.0E-06\n   radmax     2.0E-02\n   tradius    2.0E-05/g' control

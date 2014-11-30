@@ -8,13 +8,13 @@ Basic cluster options:
   slots             = 4
   time              = 24
   exclusive         = y
-# At this time, DMD seems to run best on either 4 or 8 slots.
 # Use up to 24 (hours) time.
 
-Calculation basics (substrate and metal ONLY):
-  charge            = 0
+Calculation basics:
+  substrate charge  = 0
+  metal charge      = 2
   multiplicity      = 1
-# The script will tally negative/positive charges from residues automatically
+# The script will tally +/- charges from residues automatically
 
 DMD options:
   Initial T (Ti)    = 0.1
@@ -30,46 +30,73 @@ DMD options:
   Disp. magnitude   = 0.2
   All residues free = false
 
-
-QM Residues and optional adjustments:
+QM Residues:
   HIS32N-ASP34      = FrzDF , ProtDef-ProtDef
   SER7              = FrzDF , ProtDef
   HIS67             = FrzDF , ProtDef
   MET69             = FrzDF , ProtDef
   SER195            = FrzDF , ProtDef
   ASP172            = FrzDF , ProtDef
-# Ranges of residues designated e.g. HIS32N-ASP34 will include entire amino acids that lie between
+# For backbone atoms, indicate a range, e.g., HIS32N-ASP34. See below for more
+# detailed cutting instructions. By default, all res in range are included.
+# To omit residues, note individual res under "Exclude the following sidechains"
 
 Custom Substrate cut(s) - one per line:
-
+# Example: C100-C101 will cut along that bond, replacing C101 with and H and
+# putting all atoms past C101 in the DMD region.
 
 Exclude the following metals (by atomname) from QM:
   ZN1               = Freeze
 
 Exclude the following sidechains from QM:
+# Example: if you put HIS32N-ASP34 in "QM Residues" section, stating "LEU33"
+# here, without quotes, will replacing the beta carbon with an H and place all
+# other sidechain atoms of LEU33 in the DMD-only region
 
 #################################
 #     END QM/DMD PARAMETERS     #
 #################################
 
-# Other flags (to the right of equals sign, separate multiple with commas):
+# For additional flags in "QM Residues" section, place after = sign. 
+# E.g.,
 #
-# QM Residues section: 
+# HIS67
+# ^ default parameters for HIS67 which includes delta protonation unless a
+# metal is at the delta nitrogen, then epsilon nitrogen is protonated.
+# 
+# HIS67 = Dprot
+# ^ will deprotonate HIS67, leaving it with a negative overall charge
+# 
+# HIS67 = Prot1
+# ^ will protonate HIS67, leaving it with a positive overall charge
+#
+# "QM Residues" flags: 
 # Prot1 - protonate atom 1
 # DProt - deprotonate
-# ProtDef - default protonation state
-# FrzDF - freeze only atoms at QM boundary
-# FrzBB - freeze backbone
-# FrzAA - freeze entire amino acid
+# (blank) - default protonation state
 #
-# "Frz" commands propogate through entire sequence if more than one amino acid is specified
+# Seperate independent options with a comma ","
+#
+# FrzBB - freeze backbone in QM Optimization
+# FrzAA - freeze entire amino acid in QM optimization
+# (blank) - default, atoms at QM boundary are frozen
+#
+# FreeDMD - do NOT freeze any of this res's atoms during DMD.
+#           good for sampling more poses for QM optimization.
+# (blank) - default, atoms connected to metals are Static,
+#           res not attached to metal are constrained within specified distance
+#
+# "Frz" and "FreeDMD" work for res ranges and will apply to everything in range
+# To change protonation state of residues within a range, specify the res
+# on a separate line with the desired option.
 # 
-# By default, these options only apply to the atoms explicitly specified in a range (e.g. HIS55-HIS57N)
-# If you want to change an option for a residue within the range a previous assignment, call it on a separate line
-# (this extra line will not be cut any differently; the entire side chain will be included)
 
 
-# Include only the functional head if lowercase or cut at the alpha carbon if in UPPER case.
+##################################
+# DETAILED CHOPPING INSTRUCTIONS #
+#
+# use lowercase res name to include only the functional head
+# use UPPERcase to chop back at the alpha carbon
 #
 #                 
 #     glu59
@@ -83,9 +110,16 @@ Exclude the following sidechains from QM:
 #             GLU59
 #           cuts here    
 #
-# Multi-residue lines will include entire side chains and the backbone, cut
-# between the alpha and the carbonyl carbon (default), between alpha carbon and nitrogen
-# (follow w/ N)
+# When specifying a range of amino acids, the script cuts along backbone atoms
+# There are three bonds per amino acid, see below for instructions on how
+# to cut exactly where you want:
+#
+# Peptide bonds - requests to cut along this bond will not be considered.
+# (aldehyde and amine chemistry are very different from amide chemistry)
+#
+#
+# Alpha and carbonyl carbon bond - default
+# Alpha carbon and nitrogen bond - follow resnumber with N. see below ASCII art
 #
 #    +-------------------------+
 #    |    Q M   R E G I O N    |
@@ -101,6 +135,7 @@ Exclude the following sidechains from QM:
 #       |                   |
 #  (cuts here)-----------(to here)
 #
-# his55N-his57 [illustrated]
+# For cuts along nitrogen-alpha carbon of HIS55 and alpha-carbonyl carbon of HIS57:
+# HIS55N-HIS57
 #
 #

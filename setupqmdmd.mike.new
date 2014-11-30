@@ -2,6 +2,7 @@
 
 rundetection=n
 
+set -e
 #set -x
 
 #########################
@@ -13,28 +14,51 @@ rundetection=n
 
 if [ -z "$1" ]; then
   echo '
+  #### Welcome ####
+
   # This script aims to take a pdb file and set up everything one would need for a QM/DMD run.
   # First, call the script and any pdb file:
 
-  $ setupqmdmd.mike runthis.pdb
+  $ setupqmdmd.mike.new runthis.pdb
 
-  # A folder by the same name will be created, the pdb file formatted and converted to a DMD-compatible format as new.pdb.
-  # If the above was successful, and if "rundetection" is enabled, the script will also state the nearby residues to the metal and substrate.
-  # The script will set up the QM region by calling the script again:
+  # A folder by the same name will be created, the pdb file formatted and 
+  # converted to a DMD-compatible format as new.pdb.  If the above was 
+  # successful, and if "rundetection" is enabled, the script will also state
+  # the nearby residues to the metal and substrate.
+  
+  # After successfully running the above, check the supplied .qmdmd and .mtm files.
+  # These are the input files and your guide to setting all the parameters you could
+  # want for the QM/DMD- and TURBOMOLE-specific settings, respectively.
 
-  $ setupqmdmd.mike runthis.pdb HIS422,glu471,HIS426 -1 1
+  # calling this script again with an extra flag, e.g.:
 
-  # $1 is pdb file/new qmdmd folder. $2 should be residue list for qm region, $3 metal/substrate charge $4 is the metal/substrate multiplicity.
-  # Lower case residues will cut the residue into a "short" version - usually just the functional head. E.g., glu471 would be cut into a formate ion for the QM region
-  # Upper case residues typically are cut back at the alpha carbon.
+  $ setupqmdmd.mike.new runthis.pdb go
 
-  # Check your active site by calling "molden chop.xyz" in the qmdmd folder after this step has finished. Feel free to also make changes to input, inConstr, etc.
-  # Two log files are created: qmdmdsetup.log and qmdmdsetup.err within the directory
-  # These logs will be monitored as they are created, and commonly encountered errors dealt with, however this error handling is in a very early stage so please check these yourself.
+  # will have it run through the rest of the setup. Check your active site by calling 
+  # "molden chop.xyz" in the qmdmd folder after this step has finished. 
+  # In some cases, you may find overlapping atoms/bonds. One way you can fix this is
+  # by starting over, and running with the flag "fixClashes"
+
+  $ rm -r runthis/
+  $ setupqmdmd.mike.new runthis.pdb
+  $ setupqmdmd.mike.new runthis.pdb fixClashes
+
+  # This tells the script to run a short (just over a picosecond) DMD simulation
+  # which should help resolve clashes. You may check the progress by looking at 
+  # "new.pdb" or "movie.pdb" afterward.
+
+  # Once all steps of the script have finished, feel welcome to make your own 
+  # changes to the generated input, inConstr files, TURBOMOLE control settings in
+  # "Template*/" folders, etc.
+
+  # Two log files are created: qmdmdsetup.log and qmdmdsetup.err
+  # These logs will be monitored as they are created, and commonly encountered
+  # errors dealt with, however this error handling is in a very early stage so
+  # please check these yourself.
 
   # Other scripts required: 
   # pdbPOLARHs
-  # genQMparameters
+  # genQMparameters.py
   # measurepdb
   # renumberyay2.py
   # possibly others I am missing
@@ -544,6 +568,12 @@ if [ $2 ]; then
 # the following is a (lengthy) script which sets up all the the DMD and QM information which links the QM and DMD regions together
 # instructions are provided in the default.qmdmd file which was automatically copied if not already supplied
  genQMDMDparameters.py $qmdmdfolder new.pdb
+ if [[ $? = 0 ]]; then
+  :
+ else
+  echo "failure: $?, exiting main script"
+  exit
+ fi
 # Also output from above is a "qmRegionCharge" file which kept track of the changes in overall charge that came with each new residue
 
 ###### N E W   F L A G   11/25/14 #######
@@ -556,7 +586,7 @@ if [ $2 ]; then
   mv input _input
   cat _input \
    | sed s/dmd_cores=.*/dmd_cores=1/g \
-   | sed s/MAX_TIME=.*/MAX_TIME=50/g \
+   | sed s/MAX_TIME=.*/MAX_TIME=30/g \
    | sed s/n_cluster=.*/n_cluster=1/g \
    | sed s/f_movie_dt=.*/f_movie_dt=1/g > input
   mv inConstr _inConstr
@@ -577,7 +607,7 @@ if [ $2 ]; then
 
 # Let's update the h.pdb from that simulation
  rm x.pdb
- rm hi.pdb
+ rm h.pdb
  extract_qm.sh new.pdb x.pdb >> qmdmdsetup.log
  chimera_addh.sh x.pdb h.pdb >> qmdmdsetup.log 2>>qmdmdsetup.err
 
