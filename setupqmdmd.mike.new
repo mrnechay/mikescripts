@@ -1,8 +1,8 @@
 #!/bin/bash
 
-rundetection=n
+rundetection=y
 
-set -e
+#set -e
 #set -x
 
 #########################
@@ -57,10 +57,15 @@ if [ -z "$1" ]; then
   # please check these yourself.
 
   # Other scripts required: 
+  # performturbomole
+  # addMissingH.py
   # pdbPOLARHs
   # genQMparameters.py
   # measurepdb
   # renumberyay2.py
+  # atomstometal
+  # rmall
+  # freezeatoms
   # possibly others I am missing
   '
   exit 0
@@ -567,7 +572,8 @@ if [ $2 ]; then
  if [ -a $qmdmdfolder/input ]; then rm $qmdmdfolder/input; fi
 # the following is a (lengthy) script which sets up all the the DMD and QM information which links the QM and DMD regions together
 # instructions are provided in the default.qmdmd file which was automatically copied if not already supplied
- genQMDMDparameters.py $qmdmdfolder new.pdb
+ cat new.pdb | sed "s/Eh/H /g" > newWithH.pdb
+ genQMDMDparameters.py $qmdmdfolder newWithH.pdb
  if [[ $? = 0 ]]; then
   :
  else
@@ -578,7 +584,7 @@ if [ $2 ]; then
 
 ###### N E W   F L A G   11/25/14 #######
 
- if [ "$2" == "fixClashes" ]; then
+ if [ "$2" == "fixClashes" ] || [ "$2" == "FIXCLASHES" ]; then
 # This is a flag that will tell the script to run a very short DMD run that will fix clashes between the residues and substrate.
 # this could be a problem in docking manually where a residue hidden from view in, say, Chimera, actually clashes with substrate.
 # Only use this option during a qrsh session!
@@ -586,9 +592,12 @@ if [ $2 ]; then
   mv input _input
   cat _input \
    | sed s/dmd_cores=.*/dmd_cores=1/g \
-   | sed s/MAX_TIME=.*/MAX_TIME=30/g \
+   | sed s/MAX_TIME=.*/MAX_TIME=80/g \
    | sed s/n_cluster=.*/n_cluster=1/g \
    | sed s/f_movie_dt=.*/f_movie_dt=1/g > input
+  if [ "$2" == "FIXCLASHES" ]; then
+   sed -i 's/MAX_TIME=80/MAX_TIME=160/g' input
+  fi
   mv inConstr _inConstr
   cat _inConstr | grep -v AtomPairRel > inConstr
   PWD=`pwd`

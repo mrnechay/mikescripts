@@ -6,7 +6,7 @@ Hscratchdir=$TURBOTMPDIR
 Horigindir=$SGE_CWD_PATH
 
 time_requested=`cat time_requested`
-time_to_quit=$(($time_requested-2))\h
+time_to_quit=$(($time_requested-3))\h
 
 sleep $time_to_quit;
 if [ -s "$Hscratchdir/GEO_OPT_RUNNING" ]; then
@@ -29,7 +29,13 @@ if [[ "$currentstep" == "numforce" ]]; then
    rm $Hscratchdir/numforce/stop
   else
    rm $Hscratchdir/numforce/KraftWerk/lock*
-   rm $Hscratchdir/numforce.out
+   sleep 5400
+    if grep -q "END OF NumForce" $Hscratchdir/numforce.out; then
+     rm $Hscratchdir/numforce/stop
+    else
+     rm  $Hscratchdir/numforce.out
+     break
+    fi
   fi  #This while loop will make it wait until Turbomole has successfully stopped the run
       #If NumForce is told to stop but actually finished, it does not remove stop itself
  done

@@ -1,0 +1,3 @@
+#!/bin/bash
+
+for ii in `qstat -r -u mnechay | grep mnechay | awk -F" " '{print $1}' | tr '\n' ' '`; do qj $ii | head -n +1; folder=`qj $ii | head -n +1 | awk -F" " '{print $NF}'`; if `qj $ii | head -n +1 | grep -q Iteration`; then echo "runturbomole.mine -sub -N 16 -t 24 -type 16 otherscript.sh"; else iteration=`echo $folder/Iteration*/ | tr ' ' '\n' | awk -F" " '{print $NF}' | sed s:/::g | sed s:.*Iteration_::g | sort -nk1 | tail -1`; echo "runstepnew.mike -sub -N 12 -t 24 -type 12 $iteration $iteration"; fi; done

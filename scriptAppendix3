@@ -51,34 +51,29 @@ proteinCharge=$(($qmCharge-$substrateCharge))
 ### Assuming the multiplicity comes from the metal:
 metalMultiplicity=`cat justSubstrateAndNumForce.qmdmd | grep "  multiplicity" | awk -F" " '{print $NF}'`
 
-echo "protein charge is $proteinCharge"
-echo "metal multiplicity is $metalMultiplicity"
-
 # Get mtm file ready
 cp justSubstrateAndNumForce.mtm finishOptAndNumForce/justResidues/justResidues.mtm
 echo "  charge                = $proteinCharge" >> finishOptAndNumForce/justResidues/justResidues.mtm
 echo "  multiplicity          = $metalMultiplicity" >> finishOptAndNumForce/justResidues/justResidues.mtm
 
 cp Optimization/* ./finishOptAndNumForce/
-if [ -f ./finishOptAndNumForce/stop ]; then rm ./finishOptAndNumForce/stop; fi
 if [ -f ./finishOptAndNumForce/script.sh ]; then rm ./finishOptAndNumForce/script.sh; fi
 cd finishOptAndNumForce/
 if [ ! -f ./otherscript.sh ]; then cp /u/home/m/mnechay/mikescripts/otherscript.sh ./; fi
 echo "jobex -c 500 -ri -energy 5 -gcart 2 -gexp 2" >> script.sh
-#echo "genMFILE" >> script.sh
-#echo "freezeatoms $frozenRes" >> script.sh
-#echo "NumForce -ri -level $functional -central -frznuclei -mfile MFILE > numforce.out" >> script.sh
-#echo 'echo "\$coord" >> justResidues/coord' >> script.sh
-#echo 'cat coord | egrep "[a-z] +f$" >> justResidues/coord' >> script.sh
-#echo 'echo "\$end" >> justResidues/coord' >> script.sh
-#echo 'cd justResidues' >> script.sh
-#echo 'performturbomole coord' >> script.sh
-#echo 'newfolder=`echo */ | sed s:/::g`' >> script.sh
-#echo 'cp $newfolder/* ./' >> script.sh
-#echo 'rm -r $newfolder' >> script.sh
-#echo 'ridft >> ridft.out' >> run_calc.sh
-#echo 'runturbomole.mine.notexclusive -N 1 -t 8 run_calc.sh' >> script.sh
-#echo 'cd ../' >> script.sh
-runturbomole.mine -sub -N 16 -t 24 -type 16 otherscript.sh
+echo "genMFILE" >> script.sh
+echo "freezeatoms $frozenRes" >> script.sh
+echo "NumForce -ri -level $functional -central -frznuclei -mfile MFILE > numforce.out" >> script.sh
+echo 'echo "\$coord" >> justResidues/coord' >> script.sh
+echo 'cat coord | egrep "[a-z] +f$" >> justResidues/coord' >> script.sh
+echo 'echo "\$end" >> justResidues/coord' >> script.sh
+echo 'cd justResidues' >> script.sh
+echo 'performturbomole coord' >> script.sh
+echo 'newfolder=`echo */ | sed s:/::g`' >> script.sh
+echo 'cp $newfolder/* ./' >> script.sh
+echo 'rm -r $newfolder' >> script.sh
+echo 'ridft >> ridft.out' >> script.sh
+echo 'cd ../' >> script.sh
+runturbomole.mine.2 -N 8 -t 24 -type 8 otherscript.sh
 cd ../
 

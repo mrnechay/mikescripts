@@ -4,16 +4,11 @@
  cd $here
 
  thing=`echo */`
- if [[ "$thing" == '*/' ]]; then
-  exit 0
- else
-  list=`find . -type d -iname  KraftWerk`
- fi
+ list=`find . -type d -iname  KraftWerk`
 
  for i in $list
  do
    cd $i
-   tarKraftWerk &
    rm *.err *.log
    cd ../
    pwd

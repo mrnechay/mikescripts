@@ -1,0 +1,11 @@
+#!/bin/bash
+
+eval `grep charge= rawoptions.sh`
+eval `grep multiplicity= rawoptions.sh`
+
+if grep -q charge= rawoptions.sh; then
+ echo "Successful loading of charge from raw file"
+ echo "multiplicity is $multiplicity"
+ unpaired=$((multiplicity - 1))
+ echo -e "\n\n\neht\n\n$charge\nn\nu $unpaired\n*\n\nn\n*\n" | define >> fixAlphaBeta
+fi

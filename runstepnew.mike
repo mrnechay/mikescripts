@@ -149,7 +149,9 @@ cat << %EOF% > $runfile
 #
   source /u/local/bin/qq.sge/qr.runtime
 #
-  
+  cd Iteration_$2
+  bash scriptAppendix2
+  cd ..  
   runstepnew.mike -sub -N $cores -t $wall -type $node_type $3 $4
 
 

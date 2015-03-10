@@ -1,0 +1,68 @@
+#!/bin/bash
+
+file=$1
+filename=`echo $file | awk -F"." '{print $1}'`
+if [ -f frozen ]; then
+ frozen=`cat frozen`
+else
+ frozen=""
+fi
+charge=$2
+multiplicity=$3
+
+echo "% chk=$filename.chk"
+echo '#p m06/GEN geom=(modredundant) opt=(qst3,redundant) freq=noraman Temperature=298.15'
+echo ' ' 
+echo 'Reagent'
+echo ' '
+echo "$charge $multiplicity"
+echo ' '
+egrep "^ *[A-Z][a-z]*  " $filename\_reactant.xyz
+echo ' '
+echo 'Product'
+echo ' '
+echo "$charge $multiplicity"
+echo ' '
+egrep "^ *[A-Z][a-z]*  " $filename\_product.xyz
+echo ' '
+echo 'TS Guess'
+echo ' '
+echo "$charge $multiplicty"
+echo ' '
+egrep "^ *[A-Z][a-z]*  " $filename.xyz
+echo ' '
+
+if [[ "$frozen" == "" ]]; then
+ :
+else
+ gFreeze $frozen
+ echo ' '
+fi
+
+for ii in `egrep "^ *[A-Z][a-z]*  " $filename.xyz | awk -F" " '{print $1}' | sort -u | tr '\n' ' ' | sed "s/ $/\n/g"`; do
+ if [[ $ii == Fe ]] || [[ $ii == Zn ]]; then
+  echo "$ii 0"
+  echo "QZVP"
+  echo "****"
+ else
+  echo "$ii 0"
+  echo "SVP"
+  echo "****"
+ fi
+done
+
+echo ' '
+
+#XYZ part
+#egrep "^ *[A-Z][a-z]*  " ../feII_his1_reactant.xyz
+
+#Ir 0
+#QZVP
+#****
+#C
+#Fe
+#H
+#K
+#N
+#O
+

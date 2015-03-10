@@ -8,7 +8,10 @@ Basic cluster options:
   slots             = 4
   time              = 24
   exclusive         = y
-# Use up to 24 (hours) time.
+# This section is deprecated. I don't think there should be any reason for it
+# because DMD parallelizes well only up to 8 cores and all Hoffman nodes have
+# at least 8 cores, so I hardcoded "8" into the script. time and exclusivity
+# are defined when you call the runstepnew script.
 
 Calculation basics:
   substrate charge  = 0
@@ -24,19 +27,22 @@ DMD options:
   Movie dt          = 10
   DMD time steps    = 10000
   Max Iteration     = 40
-  Equilibrate       = true
   Discard           = true
   Converge DMD      = true
+  Equilibrate       = false
+  Equil Tfactor     = 2
+  Equil Steps       = 5
+  Equil Time        = 2500
   Disp. magnitude   = 0.2
   All residues free = false
 
 QM Residues:
-  HIS32N-ASP34      = FrzDF , ProtDef-ProtDef
-  SER7              = FrzDF , ProtDef
-  HIS67             = FrzDF , ProtDef
-  MET69             = FrzDF , ProtDef
-  SER195            = FrzDF , ProtDef
-  ASP172            = FrzDF , ProtDef
+  HIS32N-ASP34
+  SER7
+  HIS67
+  MET69
+  SER195
+  ASP172
 # For backbone atoms, indicate a range, e.g., HIS32N-ASP34. See below for more
 # detailed cutting instructions. By default, all res in range are included.
 # To omit residues, note individual res under "Exclude the following sidechains"
@@ -50,7 +56,7 @@ Exclude the following metals (by atomname) from QM:
 
 Exclude the following sidechains from QM:
 # Example: if you put HIS32N-ASP34 in "QM Residues" section, stating "LEU33"
-# here, without quotes, will replacing the beta carbon with an H and place all
+# here, without quotes, will replace the beta carbon with an H and place all
 # other sidechain atoms of LEU33 in the DMD-only region
 
 #################################
@@ -58,7 +64,7 @@ Exclude the following sidechains from QM:
 #################################
 
 # For additional flags in "QM Residues" section, place after = sign. 
-# E.g.,
+# E.g., if you include a line that looks like:
 #
 # HIS67
 # ^ default parameters for HIS67 which includes delta protonation unless a

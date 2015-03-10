@@ -32,4 +32,6 @@
 #done
 #
 
-find . -maxdepth 5 -name \movie -delete
+find . -maxdepth 300 -name \movie -delete
+#find . -maxdepth 300 -name \alpha -delete
+#find . -maxdepth 300 -name \beta -delete

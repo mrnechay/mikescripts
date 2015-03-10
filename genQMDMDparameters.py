@@ -39,7 +39,11 @@ DMDoptions = {
              'Equilibrate': 'true',
              'Discard': 'true',
              'Converge': 'true',
-             'Dispmagnitude': '0.3'
+             'Dispmagnitude': '0.3',
+             'equilibrate': 'false',
+             'equilibrate_tfactor': 2,
+             'equilibrate_steps': 5,
+             'equilibrate_tot_time': 2500
 }
 
 allResFree = False
@@ -94,9 +98,9 @@ with open(qmdmdInput) as infile:
                 charge += int(line.split()[-1])
             elif "  multiplicity" in line:
                 multiplicity = int(line.split()[-1])
-            elif "Ti" in line:
+            elif "(Ti)" in line:
                 DMDoptions['Ti'] = line.split()[-1]
-            elif "Tf" in line:
+            elif "(Tf)" in line:
                 DMDoptions['Tf'] = line.split()[-1]
             elif "Cluster" in line:
                 DMDoptions['Clustersize'] = line.split()[-1]
@@ -114,6 +118,12 @@ with open(qmdmdInput) as infile:
                 DMDoptions['Discard'] = line.split()[-1]
             elif "Converge" in line:
                 DMDoptions['Converge'] = line.split()[-1]
+            elif "Equil Tfactor" in line:
+                DMDoptions['equilibrate_tfactor'] = line.split()[-1]
+            elif "Equil Steps" in line:
+                DMDoptions['equilibrate_steps'] = line.split()[-1]
+            elif "Equil Time" in line:
+                DMDoptions['equilibrate_tot_time'] = line.split()[-1]
             elif "  Disp. magnitude" in line:
                 DMDoptions['Dispmagnitude'] = float(line.split()[-1])
             elif "All residues free" in line:
@@ -365,7 +375,6 @@ Ycoordinate = []
 Zcoordinate = []
 elementsymbol = []
 
-
 COUNTER = 1
 with open(pdbFile) as proteinfile:
     for ii in proteinfile:
@@ -422,6 +431,8 @@ for ii in qmResidueList:
             qmChop[resCounter] = ["CA", "CB"]
             qmFrez[resCounter] = ["CB"]
 
+            if aminoname == 'CYS':
+                charge -= 1
             if aminoname == 'ARG':
                 charge += 1
             if aminoname == 'LYS':
@@ -437,7 +448,7 @@ for ii in qmResidueList:
                             '%s %s%s ' % (residuename[jj-1], chainidentifier[jj-1], residuesequencenumber[jj-1]), re.IGNORECASE): 
                     qmRes[resCounter] = '%s %s%s' % (residuename[jj-1], chainidentifier[jj-1], residuesequencenumber[jj-1])
                     # ^ I put this here so that it only adds a residue to the list if it actually exists in the protein
-                    if atomname[jj-1].replace(" ", "") not in ["N", "O", "C", "HN", "CA"]:
+                    if atomname[jj-1].replace(" ", "") not in ["N", "O", "C", "HN", "CA", "HG1"]:
                         qmList[resCounter].append(atomname[jj-1].replace(" ", ""))
 
             if 'FrzAA' in option:
@@ -454,6 +465,8 @@ for ii in qmResidueList:
             qmList[resCounter] = [] #initialize list of atoms to include in QM region
             qmChop[resCounter] = []
 
+            if aminoname == 'cys':
+                charge -= 1
             if aminoname == 'arg':
                 charge += 1
             if aminoname == 'lys':
@@ -468,7 +481,7 @@ for ii in qmResidueList:
                             '%s %s%s ' % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1]), re.IGNORECASE) and atomname[ii-1] == " CA ":
 
                     qmRes[resCounter] = '%s %s%s' % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1])
-                    qmSkip = [" C  ", " O  ", " N  ", " HN "] # We already know we don't want these backbone atoms in our qm region
+                    qmSkip = [" C  ", " O  ", " N  ", " HN ", " HG1"] # We already know we don't want these backbone atoms in our qm region
                     previousAtomName = " C  " # we will be trying to step along the bonds starting at CA, coming from C
                     atomDirections = bondlist[ii-1][1:] # list of atoms connected to this one
                     currentAtomName = " CA "
@@ -542,11 +555,13 @@ for ii in qmResidueList:
                 currentRes = '%s %s%s' % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1])
 
                 if begResOption == "N":
-                    qmSkip = [" N  ", " HN "]
+                    qmSkip = [" N  ", " HN ", " HG1"]
                     qmChop[resCounter] = ["N", "CA"]
                     qmFrez[resCounter] = ["CA"]
                     aminoname = begAminoName
 
+                    if aminoname == 'CYS':
+                        charge -= 1
                     if aminoname == 'ARG':
                         charge += 1
                     if aminoname == 'LYS':
@@ -599,10 +614,12 @@ for ii in qmResidueList:
                         aminoname = endAminoName
 
                         if endResOption == "":
-                            qmSkip = [" C  ", " O  "]
+                            qmSkip = [" C  ", " O  ", " HG1"]
                             qmChop[resCounter] = ["C", "CA"]
                             qmFrez[resCounter] = ["CA"]
 
+                            if aminoname == 'CYS':
+                                charge -= 1
                             if aminoname == 'ARG':
                                 charge += 1
                             if aminoname == 'LYS':
@@ -659,6 +676,8 @@ for ii in qmResidueList:
      
                                 aminoname = residuename[currentline-1]
 
+                                if aminoname == 'CYS':
+                                    charge -= 1
                                 if aminoname == 'ARG':
                                     charge += 1
                                 if aminoname == 'LYS':
@@ -857,6 +876,7 @@ with open('h.pdb') as Hfile:
             COUNTER += 1
         
 
+
 for idx, ii in enumerate(qmRes): #list of residues, also idx is the current index for qmList
     for idx2, jj in enumerate(Hresiduename): #idx2 is also the index of all of the H lists defined above
         for idx3, kk in enumerate(qmList[idx]): 
@@ -939,6 +959,9 @@ call('echo "export equilibrate=%s" >> input' % DMDoptions['Equilibrate'], shell=
 call('echo "export discard=%s" >> input' % DMDoptions['Discard'], shell=True)
 call('echo "export convergeDMD=%s" >> input' % DMDoptions['Converge'], shell=True)
 call('echo "export dmd_cores=%s" >> input' % str(8), shell=True)
+call('echo "export equilibrate_tfactor=%s" >> input' % DMDoptions['equilibrate_tfactor'], shell=True)
+call('echo "export equilibrate_steps=%s" >> input' % DMDoptions['equilibrate_steps'], shell=True)
+call('echo "export equilibrate_tot_time=%s" >> input' % DMDoptions['equilibrate_tot_time'], shell=True)
 # Hardcoding "8" dmd cores above, because DMD does not parallelize well past 8 and the smallest nodes on hoffman have 8 cores
 
 # input file generated
@@ -1008,7 +1031,9 @@ with open(pdbFile) as pdbfileagain:
         if 'SUB B' in ii:
             break
 if substrateCutList == []:
-    inConstrStatic.append("Static %d.*.*" % (TERcount + 1))
+    for ii in qmRes:
+        if ii[0:3] == "SUB":
+            inConstrStatic.append("Static %d.*.*" % (TERcount + 1))
 # if the user did cut the substrate, let's leave static all atoms in the list of qm atoms:
 else:
     for idx, ii in enumerate(qmRes):

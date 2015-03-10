@@ -9,15 +9,15 @@
 #################################
 
 Basic cluster options:
-  slots			= 8
+  slots                 = 8
   node_type             = 8
-  time			= 24
-  exclusive		= y
+  time                  = 24
+  exclusive             = y
 
 Basic calculation options:
-  type			= opt
-  charge		= 0
-  multiplicity		= 1
+  type                  = opt
+  charge                = 0
+  multiplicity          = 1
 
 # Calculation types available:
 # sp, opt, ts, force, optforce,
@@ -25,21 +25,21 @@ Basic calculation options:
 #################################
 
 Level of theory:
-  DFT			= y
-  RI			= y
+  DFT                   = y
+  RI                    = y
   functional            = tpss
-  basis set		= def2-SVP
-  metal basis set	= def2-TZVPP
+  basis set             = def2-SVP
+  metal basis set       = def2-TZVPP
 
 TS options (ignore if not):
-  itvc			= 1
-  troublesome TS search	= n
+  itvc                  = 1
+  troublesome TS search = n
 
 Other options to deal with troublesome calculations:
   scf convergence               = 7
-  loosen convergence criteria	= n
-  weight derivatives		= y
-  gridsize			= m4
+  loosen convergence criteria   = n
+  weight derivatives            = y
+  gridsize                      = m4
 
 # First option reduces energy and gcart convergence threshold
 # TURBOMOLE manual recommends weight derivatives for NumForce runs, also could be helpful for convergence in opt/ts runs
@@ -47,19 +47,20 @@ Other options to deal with troublesome calculations:
 #############################################################################################################################
 
 Memory:
-  ricore		= 500
-  rpacor		= 3000
-  maxcor		= 3000
+  ricore                = 500
+  rpacor                = 3000
+  maxcor                = 3000
 
 COSMO:
-  cosmo			= n
-  dielectric constant	= 80
+  cosmo	                = n
+  dielectric constant   = 80
 
 Other options:
-  nbo			= n
+  nbo                   = n
 
 other DFT options:
-  marij			= y
+  DFTD3disperson        = y
+  marij	                = y
 
 Freeze atoms:
 # freeze		= 12,14

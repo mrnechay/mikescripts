@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# freeze atoms to .com file
+
+IFS=',' read -a frozenAtoms <<< "$1"
+
+for ii in ${frozenAtoms[@]}; do
+ echo "X $ii F"
+done 
+

@@ -45,3 +45,4 @@ Other options:
 
 other DFT options:
   marij			= y
+  DFTD3disperson        = y

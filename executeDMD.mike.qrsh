@@ -16,7 +16,7 @@ xDMD=false
 b_restart=false
 b_idealize=$idealize
 f_temp=$Ti
-f_heatxc=$heat_xc
+f_heatxc=0.1
 n_time=$MAX_TIME
 f_movie_dt=$f_movie_dt
 

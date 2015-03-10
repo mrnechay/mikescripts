@@ -56,9 +56,9 @@ cat << %EOF% > $runfile
 #  Parallelism:  $cores-way parallel
 
 #  Resources requested
-##$ -pe ${node_type}threads* $cores
-#$ -pe dc_* $cores
-#$ -l h_data=$((h_data))G,h_rt=$wall:00:00${queue}
+#$ -pe ${node_type}threads* $cores
+##$ -pe dc_* $cores
+#$ -l exclusive,h_data=$((h_data))G,h_rt=$wall:00:00${queue}
 
 #  Name of application for log
 #$ -v QQAPP=openmpi
@@ -73,13 +73,16 @@ cat << %EOF% > $runfile
 #  Uncomment the next line to have your environment variables used by SGE
 #$ -V
 
+set cores = \`cat /proc/cpuinfo |grep ^processor |wc -l\`
+
+
 #
 # Initialization for mpi parallel execution
 #
   unalias *
   set qqversion = 
   set qqapp     = "openmpi parallel"
-  set qqptasks  = $cores
+  set qqptasks  = \$cores
   set qqidir    = $DIR
   set qqjob     = $1
   set qqodir    = $DIR
@@ -99,7 +102,7 @@ cat << %EOF% > $runfile
   echo "  script directory: "\$qqidir
   echo "  Submitted to SGE: "\$qqsubmit
   echo "  'scratch' directory (on each node): "\$qqscratch
-  echo "  script $cores-way parallel job configuration:"
+  echo "  script \$cores-way parallel job configuration:"
   echo "    \$qqconfig" | tr "\\\\" "\n"
 #
   echo ""
@@ -122,7 +125,7 @@ cat << %EOF% > $runfile
   source \$TURBODIR/Config_turbo_env.tcsh
   setenv PARA_ARCH SMP
   set path=(\$TURBODIR/bin/`sysname` \$path)
-  setenv PARNODES  $cores
+  setenv PARNODES  \$cores
   setenv HOSTS_FILE \$global_scratch/nodes_long.\$JOB_ID
 
   setenv TURBOTMPDIR \$global_scratch
