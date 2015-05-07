@@ -1,20 +1,6 @@
 #!/bin/bash
 
-# get rid of frozen coordinates 
-#sed -i 's/      f//g' coord
-#sed -i 's/     f/qwertf/g' coord
-#sed -i 's/ f//g' coord
-#sed -i 's/qwertf/     f/g' coord
-# end get rid of frozen coordinates
-
-#IFS=',' read -a fvalues <<< "$1"
-
-#for ii in ${fvalues[@]}
-#do
-#sed -i $((ii+1))'s/$/ f/' coord
-#done
-
-# End freezing section
+echo "you're using an old script, I recommend freezeatoms.py"
 
 # get rid of frozen coordinates
 sed -i -e 's/fe/KEEPSAFE/g' coord

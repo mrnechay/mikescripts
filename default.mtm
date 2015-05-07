@@ -18,10 +18,14 @@ Basic calculation options:
   type                  = opt
   charge                = 0
   multiplicity          = 1
+  use IC                = n
+  use constrained IC    = n
+  frz bond angle dih    = 155-156
 
 # Calculation types available:
 # sp, opt, ts, force, optforce,
 # optNumForce, tsNumForce
+# IC auto-defined using ired
 #################################
 
 Level of theory:
@@ -32,8 +36,28 @@ Level of theory:
   metal basis set       = def2-TZVPP
 
 TS options (ignore if not):
+  generate rxn coord    = n
+  structures to gen     = 10
+  reactant file         = file1.xyz
+  product file          = file2.xyz
+  TS guess              = fileg.xyz
   itvc                  = 1
   troublesome TS search = n
+# When "generate rxn coord" is set to "y", script will generate the number of
+# structures set in "structures to gen" between the reactant and product
+# using Linear Synchronous Transit, between simply the reactant & product
+# or, if "TS guess" is set to an existing file, from reactant to TS guess and
+# from TS guess to product.
+# 
+# with "generate rxn coord" set, constrained optimizations will be performed
+# with bond, angle, or dihedral frozen, as set in "frz bond angle dih"
+# freeze bond between 155 and 156 with "155-156"
+# freeze angle between 43 and 45, anchored to 44 with "43-44-45"
+# etc.
+#
+# If "generate rxn coord" is not set to "y", then a single transition state
+# optimization will follow from the file specified in the function call.
+################################################################################
 
 Other options to deal with troublesome calculations:
   scf convergence               = 7
@@ -42,9 +66,11 @@ Other options to deal with troublesome calculations:
   gridsize                      = m4
 
 # First option reduces energy and gcart convergence threshold
-# TURBOMOLE manual recommends weight derivatives for NumForce runs, also could be helpful for convergence in opt/ts runs
-# default gridsize is m3, 1 is a coarse small grid, 7 is finest. TURBOMOLE manual recommends m4 for clusters of > 50 atoms
-#############################################################################################################################
+# TURBOMOLE manual recommends weight derivatives for NumForce runs, also could
+# be helpful for convergence in opt/ts runs default gridsize is m3, 1 is a
+# coarse small grid, 7 is finest. TURBOMOLE manual recommends m4 for
+# clusters of > 50 atoms
+################################################################################
 
 Memory:
   ricore                = 500

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/python
 
 import re
 
@@ -21,7 +21,7 @@ def files():
    n = 0
    while True:
       n += 1
-      yield open('number%d.xyz' % n, 'w') # This yield makes this a "generator function" which will continue with next() right where it left off
+      yield open('number_%d.xyz' % n, 'w') # This yield makes this a "generator function" which will continue with next() right where it left off
 
 fs = files()
 outfile = next(fs)

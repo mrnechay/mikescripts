@@ -118,7 +118,7 @@ cat << %EOF% > $runfile
    echo "    \$qqconfig" | tr "\\\\" "\n" | awk '{print \$2, \$4 }' > \$global_scratch/nodes.\$JOB_ID
    ~snedd/bin/list_hosts.sh \$global_scratch/nodes.\$JOB_ID \$global_scratch/nodes_long.\$JOB_ID
 
-  setenv TURBODIR /u/home/q/qsmith/TURBOMOLE
+  setenv TURBODIR /u/home/a/ana/TURBOMOLE
   source \$TURBODIR/Config_turbo_env.tcsh
   setenv PARA_ARCH SMP
   set path=(\$TURBODIR/bin/`sysname` \$path)

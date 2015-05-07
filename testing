@@ -258,6 +258,7 @@ sed -i "s/SCFCONVERGENCE/$scfconvergence/g" control
 
 if [ -a script.sh ]; then rm script.sh; fi
 
+
 if [[ $type == ts ]]; then
  if [ -a ../hessian ]; then
   echo "hessian file detected. I'll take that."
@@ -339,7 +340,28 @@ elif [[ $type == optNumForcetsNumForce ]]; then
  echo "NumForce -ri -level $functional -central -frznuclei -mfile MFILE > numforce.out" >> script.sh
  chmod +x script.sh
 
+elif [[ $type == ICoptopt ]]; then
+ #this is an internal coordinate opt followed by a cartesian opt
+ #usually for a constrained optimization
+ echo "jobex -c 500 -ri -energy 5 -gcart 3 -gexp 2" >> script.sh
+ echo "t2x coord > finishIC.xyz" >> script.sh
+ echo "cp rawoptions.sh finishIC.mtm" >> script.sh
+ echo "performturbomole finishIC.xyz" >> script.sh
+ echo 'rm * 2> /dev/null' >> script.sh
+ echo "cp finishIC_ICoptopt/* ./" >> script.sh
+ echo 'rm -r finishIC_ICoptopt/' >> script.sh
+ echo "jobex -c 500 -ri -energy 5 -gcart 3 -gexp 2" >> script.sh
+ chmod +x script.sh
+
 fi
+
+#replace "jobex" with "jobex.loop", a script which handles an error that comes
+#up in some IC calculations
+
+if [ "$useIC" == "y" ]; then
+  sed -i "s/jobex/jobex.loop/g" script.sh
+fi
+
 
 
 if [[ $loosenconvergencecriteria == y ]]; then
@@ -390,8 +412,14 @@ sed -i 's/$end/$paroptions \n ga_memperproc 2621440 78643200\n&/g' control
 #end control file manipulation
 
 ############# INTERNAL COORDINATES ##################
-#if [ "$useIC" == "y" ]; then
-#  if [ "$useconstrainedIC" == "y" ]; then
+if [ "$useIC" == "y" ]; then
+  if [ "$useconstrainedIC" == "y" ]; then
+    IFS='-' read -a ICfrz <<< "$frzbondangledih"
+    turbomole.setIC "${ICfrz[@]}"
+  else
+    turbomole.setIC
+  fi
+fi
     
 
 #useconstrainedIC=n

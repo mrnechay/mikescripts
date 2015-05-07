@@ -120,9 +120,9 @@ cat << %EOF% > $runfile
    endif
 
    echo "    \$qqconfig" | tr "\\\\" "\n" | awk '{print \$2, \$4 }' > \$global_scratch/nodes.\$JOB_ID
-   ~snedd/bin/list_hosts.sh \$global_scratch/nodes.\$JOB_ID \$global_scratch/core_list.\$JOB_ID
+   ~ana/project-ana/bin/list_hosts.sh \$global_scratch/nodes.\$JOB_ID \$global_scratch/core_list.\$JOB_ID
 
-  setenv TURBODIR /u/home/q/qsmith/TURBOMOLE
+  setenv TURBODIR /u/home/a/ana/TURBOMOLE
   source \$TURBODIR/Config_turbo_env.tcsh
   #setenv PARA_ARCH MPI
   setenv PARA_ARCH SMP

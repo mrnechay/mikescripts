@@ -50,6 +50,7 @@ allResFree = False
 
 qmResidueList = []
 substrateCutList = []
+substrateCutOmit = []
 metalExcludeList = []
 sidechainExcludeList = []
 metalExclude = False
@@ -77,7 +78,11 @@ with open(qmdmdInput) as infile:
             if "Exclude the following metals" in line:
                 metalExclude = True
             else:
-                substrateCutList.append(line.strip().replace(" ", "").split('-'))
+                substrateCutList.append(line.strip().replace(" ", "").split('-')[0:2])
+                if len(line.strip().replace(" ", "").split('-')) > 2:
+                    substrateCutOmit.append(True)
+                else:
+                    substrateCutOmit.append(False)
         elif cutSection:
             if "Custom " in line:
                 substrateCut = True
@@ -421,7 +426,7 @@ for ii in qmResidueList:
         currentRes = "%s A%4i" % (aminoname.upper(), int(aminonum))
         #We take care of special freezing requests within these loops
         if "=" in ii:
-            option = ii[-1].split(",")
+            option = ii[-1].lower().split(",")
         else:
             option = 'blank'
 
@@ -455,7 +460,7 @@ for ii in qmResidueList:
                 for jj in qmList[resCounter]:
                     if jj not in qmFrez[resCounter]:
                         qmFrez[resCounter].append(jj)
-            if 'FreeDMD' in option:
+            if 'freedmd' in option:
                 FreeDMD.append(currentRes)
                 
 
@@ -519,11 +524,12 @@ for ii in qmResidueList:
                     qmList[resCounter].append(atomname[ii-1].replace(" ", ""))
   
 
+
             if 'FrzAA' in option:
                 for jj in qmList[resCounter]:
                     if jj not in qmFrez[resCounter]:
                         qmFrez[resCounter].append(jj)
-            if 'FreeDMD' in option:
+            if 'freedmd' in option:
                 FreeDMD.append(currentRes)
 
         resCounter += 1
@@ -593,7 +599,7 @@ for ii in qmResidueList:
                         if jj not in qmFrez[resCounter]:
                             qmFrez[resCounter].append(jj)
 
-                if 'FreeDMD' in option:
+                if 'freedmd' in option:
                     FreeDMD.append(currentRes)
 
 
@@ -650,7 +656,7 @@ for ii in qmResidueList:
                                 if jj not in qmFrez[resCounter]:
                                     qmFrez[resCounter].append(jj)
 
-                        if 'FreeDMD' in option:
+                        if 'freedmd' in option:
                             FreeDMD.append(currentRes)
 
                         resCounter += 1
@@ -699,7 +705,7 @@ for ii in qmResidueList:
                                     if jj not in qmFrez[resCounter]:
                                         qmFrez[resCounter].append(jj)
 
-                            if 'FreeDMD' in option:
+                            if 'freedmd' in option:
                                 FreeDMD.append(currentResidue)
 
 
@@ -711,6 +717,7 @@ for ii in qmResidueList:
 metalPresent = False # False until existence is proven
 subPresent = False # False until existence is proven
 metalList = []
+
 
 for ii in atomserialnospaces:
     if atom[ii-1] == 'HETATM' and atomname[ii-1].lower().replace(" ", "") in ["li", "be", "na", "mg", "k", "ca", "sc", "ti", "v", "cr", "mn", "fe", "co", "ni", "cu", "zn", "rb", "sr", "y", "zr", "nb", "mo", "tc", "ru", "pd", "ag", "cd", "cs", "ba", "hf", "ta", "w", "re", "os", "ir", "pt", "au", "hg", "la", "ce", "pr", "nd", "pm", "sm", "eu", "gd", "tb", "dy", "ho", "er", "tm", "yb", "lu"]:
@@ -725,15 +732,36 @@ for ii in atomserialnospaces:
                 resCounter += 1
     elif atom[ii-1] == 'HETATM' and residuename[ii-1] == 'SUB':
         if "%s %s%s" % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1]) not in qmRes and substrateCutList != []:
+            subPresent = True
             qmRes[resCounter] = "%s %s%s" % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1]) 
-            qmList[resCounter] = [] #initialize list of atoms to include in QM region
-            # In the substrateCutList defined by the user, the first atom will be part of the qm region and the second will be cut out, or skipped from the qm region along with all atoms that come after.
-            qmList[resCounter].append(list(x[0] for x in substrateCutList)[0])
+            qmList[resCounter] = []
+            #if not subPresent:
+            #    qmList[resCounter] = [] #initialize list of atoms to include in QM region
+            #    subPresent = True
+            # In the substrateCutList defined by the user, the first atom will be part of the qm region and the second will be cut out,
+            # or skipped from the qm region along with all atoms that come after.
+            # UNLESS the user indicated otherwise with an extra option
+ 
+            for idx, xx in enumerate(substrateCutList):
+                if not substrateCutOmit[idx]:
+                    qmList[resCounter].append(xx[0])
+
             qmSkip = []
-            qmSkip.append(list(x[1] for x in substrateCutList)[0])
-            qmChop[resCounter] = substrateCutList
-            qmFrez[resCounter] = list(x[0] for x in substrateCutList)
-            qmSkip = []
+
+            if sum(substrateCutOmit) < len(substrateCutOmit):
+                for idx, xx in enumerate(substrateCutList):
+                    if not substrateCutOmit[idx]:
+                        qmChop[resCounter].append(substrateCutList[idx])
+                        qmFrez[resCounter].append(substrateCutList[idx][0])
+                        qmSkip.append(substrateCutList[idx][1])
+            else:
+                qmChop[resCounter] = ["Don't chop"]
+                qmFrez[resCounter] = ["Don't freeze"]
+
+
+            ##########################################
+            #  THUS BEGINS THE WALK OF QM D_E_A_T_H  #
+            ##########################################
 
             for idx, kk in enumerate(list(x[1] for x in substrateCutList)):
             # this loops through the atoms designated as the start of the DMD region
@@ -761,6 +789,12 @@ for ii in atomserialnospaces:
                     if '%s %s' % (residuename[mm-1], chainidentifier[mm-1]) == 'SUB B' and atomname[mm-1].replace(" ", "") not in qmSkip and atomname[mm-1].replace(" ", "") not in qmList[resCounter]:
                         qmList[resCounter].append(atomname[mm-1].replace(" ", ""))
 
+            # this is the only part that isn't repeated each loop for no reason:
+            # adds current atom to qm region if it is not a part of the walk of QM death above
+
+        elif "%s %s%s" % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1]) in qmRes:
+            if atomname[ii-1].replace(" ", "") not in qmSkip and atomname[ii-1].replace(" ", "") not in qmList[resCounter]:
+                qmList[resCounter].append(atomname[ii-1].replace(" ", ""))
         # If the list of cuts along the substrate is empty, let's include all atoms in the QM region and not freeze or chop anything
         elif substrateCutList == []:
             qmRes[resCounter] = "%s %s%s" % (residuename[ii-1], chainidentifier[ii-1], residuesequencenumber[ii-1])
@@ -768,8 +802,14 @@ for ii in atomserialnospaces:
             qmFrez[resCounter] = ["Don't freeze"]
             qmChop[resCounter] = ["Don't chop"]
             for pp in atomserialnospaces:
-                if "%s %s" % (residuename[pp-1], chainidentifier[pp-1]) == 'SUB B':
+#                if "%s %s" % (residuename[pp-1], chainidentifier[pp-1]) == 'SUB B':
+#                    qmList[resCounter].append(atomname[pp-1].replace(" ", ""))
+                if re.match('SUB [A-Z]', # regex match the input with the pdb file
+                            '%s %s' % (residuename[pp-1], chainidentifier[pp-1]), re.IGNORECASE):
                     qmList[resCounter].append(atomname[pp-1].replace(" ", ""))
+
+if subPresent and qmList[resCounter] == []:
+    qmList[resCounter] = ["Don't Delete"]
 
 # Metal and/or substrates added
 ##############################################
@@ -777,6 +817,11 @@ for ii in atomserialnospaces:
 # let's reorder that list of residues. If not in order, QM/DMD would naively attach the later-defined basis sets to the wrong atoms
 
 qmList = filter(None, qmList)
+
+for idx, ii in enumerate(qmList):
+    if qmList[idx] == ["Don't Delete"]:
+        qmList[idx] = []
+
 qmRes = filter(None, qmRes)
 qmChop = filter(None, qmChop)
 
@@ -874,7 +919,6 @@ with open('h.pdb') as Hfile:
             Helementsymbol.append(ii[76:78])
 
             COUNTER += 1
-        
 
 
 for idx, ii in enumerate(qmRes): #list of residues, also idx is the current index for qmList
@@ -1028,16 +1072,16 @@ with open(pdbFile) as pdbfileagain:
     for ii in pdbfileagain:
         if 'TER' in ii:
             TERcount += 1
-        if 'SUB B' in ii:
+        if 'SUB B' in ii or 'SUB C' in ii or 'SUB D' in ii:
             break
-if substrateCutList == []:
+if substrateCutList == []: #or sum(substrateCutOmit) == len(substrateCutOmit): <-- this will freeze in DMD
     for ii in qmRes:
         if ii[0:3] == "SUB":
             inConstrStatic.append("Static %d.*.*" % (TERcount + 1))
 # if the user did cut the substrate, let's leave static all atoms in the list of qm atoms:
 else:
     for idx, ii in enumerate(qmRes):
-        if 'SUB B' in qmRes[idx]:
+        if 'SUB B' in ii or 'SUB C' in ii or 'SUB D' in qmRes[idx]:
             for jj in qmList[idx]:
                 inConstrStatic.append("Static %d.*.%s" % (TERcount + 1, jj)) 
 ########## Substrate atoms are now frozen in DMD ###############

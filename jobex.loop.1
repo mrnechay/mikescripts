@@ -1,0 +1,117 @@
+#!/bin/bash
+
+
+options="$@"
+editedOptions=() # new array, the loop below simply attempts to preserve all
+                 # options besides -c, which is switched to a low number for
+                 # the cartesian coordinate optimization
+
+numberOfCycles=false
+for ii in "$@"; do
+  #if expr $ii | egrep -q "^-"; then
+  if $numberOfCycles; then
+    numberOfCycles=false
+    editedOptions+=(30)
+  elif [ "$ii" == "-c" ]; then
+    numberOfCycles=true
+    editedOptions+=($ii)
+  else
+    editedOptions+=($ii)
+  fi
+done
+
+quickCartOptions="${editedOptions[@]}"
+
+##### ok great, now we can run jobex with:
+##### jobex $options
+##### ^ for all original options
+#####
+##### or run:
+##### jobex $quickCartOptions
+##### for a quick 50-step jobex instead
+
+jobex $options
+
+
+while [ ! -f GEO_OPT_CONVERGED ]; do
+  if [ -f stop ]; then exit; fi
+
+  lastJobFile=`ls -lt | egrep "job.[0-9]+" | head -n +1 | awk -F" " '{print $NF}'`
+  ls
+  lt
+  echo " "
+  ls -l > ~/deletedelete  
+  if grep -q "Optimization in internal coordinates failed" slave1.output; then
+    echo "we're in!"
+    touch WE_ARE_IN
+    # reaching this loop means the LAST job.### failed due to a problem in
+    # converting to cartesian coordinates from internal coordinates.
+
+    # ...this is due to a bug or oversight in turbomole they have chosen to
+    # allow jobex to exit with this error. let's convert to cartesian ourselves
+    # then try to convert back in a bit
+
+    # we need to turn off IC, below we just re-define
+
+    if [ -f rawoptions.sh ]; then exit; fi
+    t2x coord > fixICerror.xyz
+    cp rawoptions.sh fixICerror.mtm
+    performturbomole fixICerror.xyz
+    source rawoptions.sh # need to source for type of calculation, at least
+
+    saveOld=saveOld.`date +%s`
+    mkdir $saveOld #creates folder to save results of failed run
+    cp * $saveOld/ 2> /dev/null
+    rm * 2> /dev/null
+    cp fixICerror_$type/* ./ # "type" variable is from rawoptions.sh
+    rm -r fixICerror_$type/
+    
+    # As of now, we should have successfully redefined our system with cartesian
+    # coordinates. the above is probably overkill (going through define again)
+    # I just don't want to deal with resetting things manually tonight.
+    # there have been oddities before.
+
+    # freeze all previously frozen atoms, plus any atoms of frozen coordinate
+    
+    IFS='-' read -a ICfrz <<< "$frzbondangledih" #var prev defined in rawoptions
+    for ii in "${ICfrz[@]}"; do
+      freeze+=(",$ii") #this was a previously defined variable in rawoptions
+    done
+    
+    freezeatoms.py $freeze
+    # atoms frozen in cartesian coord
+
+    # now run partial cartesian optimization
+    jobex $quickCartOptions
+
+    # ok great! jobex should have run for just 50 cycles in cartesian coordinates.
+    # let's switch back to internal. redefine again
+    # I swear I've tried just defining IC and marching ahead, but ran into headaches
+    # ... easier to just redefine
+
+    t2x coord > fixICerror.xyz
+    cp rawoptions.sh fixICerror.mtm 
+
+    performturbomole fixICerror.xyz
+    source rawoptions.sh
+
+    saveOld=saveOld.`date +%s`
+    mkdir $saveOld
+    cp * $saveOld/ 2> /dev/null
+    rm * 2> /dev/null
+    cp fixICerror_$type/* ./ # "type" variable is from rawoptions.sh
+    rm -r fixICerror_$type/
+
+
+    # determine frozen IC
+    IFS='-' read -a ICfrz <<< "$frzbondangledih" #var prev defined in rawoptions
+    turbomole.setIC "${ICfrz[@]}"
+
+    if [ -f stop ]; then exit; fi
+    jobex $options
+    ### trying IC optimization again
+  fi
+
+
+
+

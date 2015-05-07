@@ -1,0 +1,28 @@
+#!/bin/bash
+
+if [ -z ${1+x} ]; then
+  freeze=""
+else
+  freeze="f stre $1 $2 $3 $4"
+fi
+
+
+
+define >> defineoutput2 << EOF
+
+y
+ired
+idef
+$freeze
+
+
+
+ired
+*
+
+
+
+
+*
+EOF
+
